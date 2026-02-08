@@ -45,6 +45,12 @@ const accountsSlice = createSlice({
       })
       .addCase(removeAccount.fulfilled, (state, action) => {
         state.items = state.items.filter((a) => a.id !== action.payload);
+      })
+      .addCase(addAccount.rejected, (state, action) => {
+        state.error = action.error.message;
+      })
+      .addCase(editAccount.rejected, (state, action) => {
+        state.error = action.error.message;
       });
   },
 });

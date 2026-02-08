@@ -80,6 +80,12 @@ const cardsSlice = createSlice({
         if (card) {
           card.buckets = card.buckets.filter((b) => b.id !== action.payload.id);
         }
+      })
+      .addCase(addCard.rejected, (state, action) => {
+        state.error = action.error.message;
+      })
+      .addCase(editCard.rejected, (state, action) => {
+        state.error = action.error.message;
       });
   },
 });
