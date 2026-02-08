@@ -1,9 +1,9 @@
-# Phase 1 Progress - Day 1 Foundation
+# Phase 1 Progress
 
 **Date:** 2026-02-08
-**Status:** Day 1 Complete
+**Status:** Day 2 Complete
 
-## Completed
+## Day 1 - Foundation ✅
 
 ### Database Schema (9 tables)
 - [x] `accounts` - Bank accounts (checking/savings) with balances
@@ -31,50 +31,80 @@
 - [x] Error handling middleware (Sequelize, Joi, Multer errors)
 
 ### CSV Import (3 formats)
-- [x] **Nationwide** - Handles ISO-8859-1 encoding, DD-Mon-YY dates, Paid out/Paid in columns, header rows
-- [x] **Revolut** - UTF-8 BOM, DD/MM/YYYY dates, filters REVERTED transactions, Type/Description format
-- [x] **Virgin Money** - Transaction Date/Posting Date, DBIT/CRDT direction, Billing Amount
-
-### Merchant Normalization
-- [x] 50+ merchant mappings (Tesco, Uber Eats, Microsoft, Apple, etc.)
-- [x] Store/branch number stripping
-- [x] Title-case fallback for unmapped merchants
+- [x] Nationwide, Revolut, Virgin Money format support
+- [x] 50+ merchant normalization mappings
 - [x] Smart category suggestion based on transaction history
 
 ### React Frontend (port 3000)
 - [x] Vite + React 18 + TailwindCSS v4
-- [x] Redux Toolkit state management (accounts, cards, transactions slices)
-- [x] React Router with 7 pages:
-  - Dashboard (summary cards, account/card overview)
-  - Accounts (CRUD with inline editing)
-  - Credit Cards (CRUD with bucket management)
-  - Transactions (filterable, paginated, inline category/bill editing)
-  - Import (CSV upload, preview table, category editing, confirm)
-  - Budgets (monthly budget allocation management)
-  - Forecast (Recharts area chart, payoff schedule, monthly breakdown table)
-- [x] API proxy from :3000 to :3001
-- [x] Professional indigo/white theme
+- [x] Redux Toolkit state management
+- [x] 7 pages: Dashboard, Accounts, Credit Cards, Transactions, Import, Budgets, Forecast
 
-### Sample Data Loaded
-- 3 accounts: Nationwide Current, Revolut Current, Virgin Money Card Account
-- 1 credit card: Virgin Money (29.6% APR)
-- 272 transactions imported from sample data
+### Sample Data
+- 3 accounts, 1 credit card, 272 transactions imported
+
+## Day 2 - Forms, Validation, CSV Enhancement, Available Funds ✅
+
+### 1. Forms & Validation ✅
+- [x] FormField component with label, error, hint display
+- [x] ErrorAlert component for API error display
+- [x] Account form: client-side validation (name min 2 chars, balance required/numeric)
+- [x] Credit Card form: APR 0-1 decimal validation with hints, limit/floor validation, statement date 1-31
+- [x] Card Bucket form: validation for name, balance >= 0, APR range, date format
+- [x] Budget form: category required, amount > 0, duplicate category prevention
+- [x] Inline budget editing (click amount to edit)
+- [x] Card edit functionality (was add/delete only)
+- [x] Bucket edit functionality
+- [x] Redux rejected state handling for error display
+- [x] Red border + error text on invalid fields
+
+### 2. CSV Auto-Categorization & Recurring Bill Detection ✅
+- [x] Auto-categorize by merchant rules: Shopping (Tesco, Sainsburys, etc.), Food (Uber Eats, McDonalds), Bills (EDF, BT, Virgin), Subscriptions (Netflix, Spotify), Transport (Uber, Shell), Payments (Nationwide, Amex), Health (Boots, Lords Pharmacy)
+- [x] Known recurring bill merchants: 21 merchants auto-flagged (EDF, Netflix, BT, Sky, etc.)
+- [x] Recurring bill detection: groups by merchant+amount, flags 2+ occurrences
+- [x] Falls back to past transaction history, then rule-based, then "Other"
+- [x] Import response includes recurring_bills summary
+
+### 3. Available Funds Calculation ✅
+- [x] New endpoint: `GET /api/available?month=YYYY-MM-01`
+- [x] Logic: total_balance - recurring_bills - budgeted_spending - credit_card_min_payments
+- [x] Credit card min payment calculation: MAX(balance * min_percentage, min_floor)
+- [x] Dashboard shows full cash flow breakdown:
+  - Account balances
+  - Recurring bills (by category)
+  - Budgeted spending (by category)
+  - Credit card minimum payments (per card)
+  - Available for debt repayment
+- [x] Warning when outflows exceed balance
+
+### 4. Comprehensive Input Validation ✅
+- [x] UUID parameter validation middleware on all :id routes
+- [x] CSV upload: file type validation (.csv only), 10MB size limit
+- [x] Import confirm: per-transaction field validation (account_id, date, amount required)
+- [x] Backend Joi validation on all CRUD endpoints (already existed from Day 1)
+- [x] Frontend validation with inline error messages
+- [x] Sequelize error handling (validation, unique constraint, foreign key)
+
+## Git Log
+```
+928bdc3 Phase 1 Day 1: Foundation
+0b45cc1 feat: Account/Card/Budget forms with validation
+8603975 feat: CSV auto-categorization and recurring bill detection
+2cf51f7 feat: Available funds calculation
+5cf0f31 feat: Comprehensive input validation
+```
 
 ## How to Run
 
 ```bash
-# From project root:
-npm run dev        # Start both backend (:3001) and frontend (:3000)
-
-# Or separately:
-cd server && npm run dev    # Backend with nodemon
-cd client && npm run dev    # Frontend with Vite HMR
+npm run start       # Both backend (:3001) and frontend (:3000)
+npm run dev         # With hot reload (nodemon + Vite HMR)
 ```
 
-## Next Steps (Day 2+)
+## Next Steps (Day 3+)
 - [ ] Debt optimization engine (avalanche algorithm)
-- [ ] Auto-calculate available for debt
-- [ ] Forecast generation
-- [ ] Budget suggestion engine
+- [ ] Forecast generation with 12+ month projection
+- [ ] Budget suggestion engine (based on spending history)
+- [ ] Recharts visualization for debt payoff timeline
 - [ ] Electron desktop packaging
-- [ ] End-to-end testing
+- [ ] End-to-end testing with real data
