@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
-const { ForecastResult, PayoffSchedule, CreditCard, CardBucket, DebtConfig } = require('../models');
+const { Op } = require('sequelize');
+const { ForecastResult, PayoffSchedule, CreditCard, CardBucket, DebtConfig, Account, Transaction, MonthlyBudget } = require('../models');
 const { runForecast, saveForecast } = require('../services/debtForecast');
 const validate = require('../middleware/validate');
 
@@ -16,17 +17,55 @@ const calculateSchema = Joi.object({
   strategy: Joi.string().valid('avalanche', 'snowball').default('avalanche'),
 });
 
+/**
+ * Calculate cash flow data for a given month.
+ * Returns account balance, recurring bills, budgeted spending, and available for debt.
+ */
+async function getCashFlow(monthStr) {
+  const monthStart = new Date(monthStr);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthEnd.getMonth() + 1);
+
+  const accounts = await Account.findAll();
+  const accountBalance = accounts.reduce((s, a) => s + parseFloat(a.balance || 0), 0);
+
+  const recurringBills = await Transaction.findAll({
+    where: {
+      is_recurring_bill: true,
+      date: { [Op.gte]: monthStart, [Op.lt]: monthEnd },
+    },
+  });
+  const totalBills = recurringBills.reduce((s, t) => s + Math.abs(parseFloat(t.amount || 0)), 0);
+
+  const budgets = await MonthlyBudget.findAll({ where: { month: monthStart } });
+  const totalBudgets = budgets.reduce((s, b) => s + parseFloat(b.allocated_amount || 0), 0);
+
+  return {
+    accountBalance,
+    recurringBills: totalBills,
+    budgetedSpending: totalBudgets,
+    availableForDebt: Math.max(0, accountBalance - totalBills - totalBudgets),
+  };
+}
+
 // POST /api/forecasts/calculate - Run the debt forecast engine
 router.post('/calculate', validate(calculateSchema), async (req, res, next) => {
   try {
     const { start_month, months, monthly_budget, strategy } = req.body;
     const startMonth = new Date(start_month).toISOString().slice(0, 10);
 
+    // Fetch cash flow data for the starting month
+    const cashFlow = await getCashFlow(startMonth);
+
+    // If no budget specified, use available funds from cash flow
+    const effectiveBudget = monthly_budget ?? cashFlow.availableForDebt;
+
     const result = await runForecast({
       startMonth,
       months,
-      monthlyBudget: monthly_budget ?? null,
+      monthlyBudget: effectiveBudget > 0 ? effectiveBudget : null,
       strategy,
+      cashFlow,
     });
 
     // Save to database
@@ -39,6 +78,7 @@ router.post('/calculate', validate(calculateSchema), async (req, res, next) => {
       forecast_count: result.forecasts.length,
       payoff_count: result.payoffSchedules.length,
       cliffs: result.cliffs || [],
+      cash_flow: cashFlow,
     });
   } catch (err) {
     next(err);
@@ -54,11 +94,15 @@ router.post('/recalculate', async (req, res, next) => {
     const now = new Date();
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
 
+    const cashFlow = await getCashFlow(startMonth);
+    const effectiveBudget = monthly_budget ?? cashFlow.availableForDebt;
+
     const result = await runForecast({
       startMonth,
       months,
-      monthlyBudget: monthly_budget ?? null,
+      monthlyBudget: effectiveBudget > 0 ? effectiveBudget : null,
       strategy,
+      cashFlow,
     });
 
     // Save to database
@@ -80,6 +124,7 @@ router.post('/recalculate', async (req, res, next) => {
       debt_free_date: result.debtFreeDate,
       summary: result.summary,
       cliffs: result.cliffs || [],
+      cash_flow: cashFlow,
       forecasts,
       payoff_schedule: payoff,
     });

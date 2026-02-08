@@ -52,6 +52,32 @@ const ForecastResult = sequelize.define('ForecastResult', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
+  // Cash flow fields (summary rows only, card_id=null)
+  account_balance: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  recurring_bills: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  budgeted_spending: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  available_for_debt: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  // Cliff warning flag
+  has_cliff: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  cliff_details: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+  },
 }, {
   tableName: 'forecast_results',
   indexes: [

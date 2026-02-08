@@ -67,9 +67,10 @@ function getAvalancheScore(effectiveApr, positionIndex) {
  * @param {number} options.months - number of months to project (default 60)
  * @param {number|null} options.monthlyBudget - total monthly payment budget
  * @param {string} options.strategy - 'avalanche' or 'snowball'
+ * @param {Object|null} options.cashFlow - { accountBalance, recurringBills, budgetedSpending }
  * @returns {Object} { forecasts, payoffSchedules, debtFreeDate, summary, cliffs }
  */
-async function runForecast({ startMonth, months = 60, monthlyBudget = null, strategy = 'avalanche' }) {
+async function runForecast({ startMonth, months = 60, monthlyBudget = null, strategy = 'avalanche', cashFlow = null }) {
   // 1. Load all cards with buckets
   const cards = await CreditCard.findAll({
     include: [{ model: CardBucket, as: 'buckets' }],
@@ -319,8 +320,11 @@ async function runForecast({ startMonth, months = 60, monthlyBudget = null, stra
       }
     }
 
-    // Summary row for this month
-    forecasts.push({
+    // Determine cliff warnings for this month
+    const monthCliffs = cliffs.filter((c) => c.month === monthStr);
+
+    // Summary row for this month (includes cash flow if provided)
+    const summaryRow = {
       month: monthStr,
       card_id: null,
       total_beginning_debt: parseFloat(monthTotalBeginningDebt.toFixed(2)),
@@ -329,7 +333,19 @@ async function runForecast({ startMonth, months = 60, monthlyBudget = null, stra
       total_extra_payments: parseFloat(monthTotalExtraPayments.toFixed(2)),
       total_ending_debt: parseFloat(monthTotalEndingDebt.toFixed(2)),
       debt_free_date: null,
-    });
+      has_cliff: monthCliffs.length > 0,
+      cliff_details: monthCliffs.length > 0 ? monthCliffs : null,
+    };
+
+    // Add cash flow data if provided
+    if (cashFlow) {
+      summaryRow.account_balance = parseFloat((cashFlow.accountBalance || 0).toFixed(2));
+      summaryRow.recurring_bills = parseFloat((cashFlow.recurringBills || 0).toFixed(2));
+      summaryRow.budgeted_spending = parseFloat((cashFlow.budgetedSpending || 0).toFixed(2));
+      summaryRow.available_for_debt = parseFloat((monthlyBudget || 0).toFixed(2));
+    }
+
+    forecasts.push(summaryRow);
   }
 
   // Set debt_free_date on last summary row
