@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const { MonthlyBudget } = require('../models');
 const validate = require('../middleware/validate');
+const validateUUID = require('../middleware/validateUUID');
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET single budget
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', validateUUID(), async (req, res, next) => {
   try {
     const budget = await MonthlyBudget.findByPk(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
@@ -56,7 +57,7 @@ router.post('/', validate(budgetSchema), async (req, res, next) => {
 });
 
 // PUT update budget
-router.put('/:id', validate(updateSchema), async (req, res, next) => {
+router.put('/:id', validateUUID(), validate(updateSchema), async (req, res, next) => {
   try {
     const budget = await MonthlyBudget.findByPk(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
@@ -68,7 +69,7 @@ router.put('/:id', validate(updateSchema), async (req, res, next) => {
 });
 
 // DELETE budget
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', validateUUID(), async (req, res, next) => {
   try {
     const budget = await MonthlyBudget.findByPk(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });

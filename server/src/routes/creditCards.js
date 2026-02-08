@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const { CreditCard, CardBucket } = require('../models');
 const validate = require('../middleware/validate');
+const validateUUID = require('../middleware/validateUUID');
 
 const router = express.Router();
 
@@ -37,7 +38,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET single card
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', validateUUID(), async (req, res, next) => {
   try {
     const card = await CreditCard.findByPk(req.params.id, {
       include: [{ model: CardBucket, as: 'buckets' }],
@@ -60,7 +61,7 @@ router.post('/', validate(cardSchema), async (req, res, next) => {
 });
 
 // PUT update card
-router.put('/:id', validate(updateSchema), async (req, res, next) => {
+router.put('/:id', validateUUID(), validate(updateSchema), async (req, res, next) => {
   try {
     const card = await CreditCard.findByPk(req.params.id);
     if (!card) return res.status(404).json({ error: 'Credit card not found' });
@@ -72,7 +73,7 @@ router.put('/:id', validate(updateSchema), async (req, res, next) => {
 });
 
 // DELETE card
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', validateUUID(), async (req, res, next) => {
   try {
     const card = await CreditCard.findByPk(req.params.id);
     if (!card) return res.status(404).json({ error: 'Credit card not found' });

@@ -11,7 +11,16 @@ const router = express.Router();
 const uploadDir = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-const upload = multer({ dest: uploadDir });
+const upload = multer({
+  dest: uploadDir,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    if (!file.originalname.match(/\.(csv|CSV)$/)) {
+      return cb(new Error('Only CSV files are allowed'));
+    }
+    cb(null, true);
+  },
+});
 
 // POST /api/import/csv - Upload and parse CSV
 router.post('/csv', upload.single('file'), async (req, res, next) => {
@@ -56,7 +65,16 @@ router.post('/confirm', async (req, res, next) => {
   try {
     const { transactions } = req.body;
     if (!Array.isArray(transactions) || transactions.length === 0) {
-      return res.status(400).json({ error: 'transactions array is required' });
+      return res.status(400).json({ error: 'transactions array is required and must not be empty' });
+    }
+
+    // Validate each transaction has required fields
+    for (let i = 0; i < transactions.length; i++) {
+      const t = transactions[i];
+      if (!t.account_id) return res.status(400).json({ error: `Transaction ${i + 1}: account_id is required` });
+      if (!t.date) return res.status(400).json({ error: `Transaction ${i + 1}: date is required` });
+      if (t.amount === undefined || t.amount === null) return res.status(400).json({ error: `Transaction ${i + 1}: amount is required` });
+      if (typeof t.amount !== 'number' || isNaN(t.amount)) return res.status(400).json({ error: `Transaction ${i + 1}: amount must be a valid number` });
     }
 
     const saved = await saveTransactions(transactions);

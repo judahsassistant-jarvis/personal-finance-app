@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const { CardBucket, CreditCard } = require('../models');
 const validate = require('../middleware/validate');
+const validateUUID = require('../middleware/validateUUID');
 
 const router = express.Router();
 
@@ -39,7 +40,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET single bucket
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', validateUUID(), async (req, res, next) => {
   try {
     const bucket = await CardBucket.findByPk(req.params.id, {
       include: [{ model: CreditCard, as: 'card' }],
@@ -62,7 +63,7 @@ router.post('/', validate(bucketSchema), async (req, res, next) => {
 });
 
 // PUT update bucket
-router.put('/:id', validate(updateSchema), async (req, res, next) => {
+router.put('/:id', validateUUID(), validate(updateSchema), async (req, res, next) => {
   try {
     const bucket = await CardBucket.findByPk(req.params.id);
     if (!bucket) return res.status(404).json({ error: 'Bucket not found' });
@@ -74,7 +75,7 @@ router.put('/:id', validate(updateSchema), async (req, res, next) => {
 });
 
 // DELETE bucket
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', validateUUID(), async (req, res, next) => {
   try {
     const bucket = await CardBucket.findByPk(req.params.id);
     if (!bucket) return res.status(404).json({ error: 'Bucket not found' });

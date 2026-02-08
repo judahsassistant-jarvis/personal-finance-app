@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const { Account } = require('../models');
 const validate = require('../middleware/validate');
+const validateUUID = require('../middleware/validateUUID');
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET single account
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', validateUUID(), async (req, res, next) => {
   try {
     const account = await Account.findByPk(req.params.id);
     if (!account) return res.status(404).json({ error: 'Account not found' });
@@ -49,7 +50,7 @@ router.post('/', validate(accountSchema), async (req, res, next) => {
 });
 
 // PUT update account
-router.put('/:id', validate(updateSchema), async (req, res, next) => {
+router.put('/:id', validateUUID(), validate(updateSchema), async (req, res, next) => {
   try {
     const account = await Account.findByPk(req.params.id);
     if (!account) return res.status(404).json({ error: 'Account not found' });
@@ -61,7 +62,7 @@ router.put('/:id', validate(updateSchema), async (req, res, next) => {
 });
 
 // DELETE account
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', validateUUID(), async (req, res, next) => {
   try {
     const account = await Account.findByPk(req.params.id);
     if (!account) return res.status(404).json({ error: 'Account not found' });
