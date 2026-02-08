@@ -42,6 +42,14 @@ export const updateDebtConfig = (id, data) => api.put(`/debt-config/${id}`, data
 // Forecasts
 export const getForecasts = (month) => api.get('/forecasts', { params: { month } });
 export const getPayoffSchedule = () => api.get('/forecasts/payoff');
+export const calculateForecast = (data) => api.post('/forecasts/calculate', data);
+export const recalculateForecast = (data) => api.post('/forecasts/recalculate', data);
+export const getAvalancheStrategy = () => api.get('/forecasts/strategy');
+export const clearForecasts = () => api.delete('/forecasts');
+
+// Budget Suggestions
+export const getBudgetSuggestions = (month) => api.get('/budgets/suggestions', { params: { month } });
+export const applyBudgetSuggestions = (data) => api.post('/budgets/apply-suggestions', data);
 
 // Import
 export const uploadCSV = (file, accountId) => {
