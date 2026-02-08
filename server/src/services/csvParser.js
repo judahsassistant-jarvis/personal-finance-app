@@ -84,6 +84,62 @@ function normalizeMerchant(rawMerchant) {
     .substring(0, 255);
 }
 
+// Auto-categorization rules based on merchant name
+const CATEGORY_RULES = {
+  Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
+  Food: ['Uber Eats', 'Deliveroo', 'Just Eat', 'McDonalds', 'Burger King', 'KFC', 'Nandos', 'Costa Coffee', 'Starbucks', 'Greggs', 'Subway'],
+  Bills: ['EDF Energy', 'Fuse Energy', 'Octopus Energy', 'BT', 'Virgin', 'Utility Warehouse', 'Thames Water', 'Council Tax', 'TV Licence', 'Sky', 'Sky Protect'],
+  Subscriptions: ['Netflix', 'Disney+', 'Spotify', 'Amazon Prime', 'YouTube', 'Apple', 'Dropbox', 'OpenAI ChatGPT', 'Uber One', 'Experian', 'Google Play'],
+  Transport: ['Uber', 'Shell', 'BP', 'Esso', 'NCP Parking', 'TfL', 'DVLA', 'Esure Motor', 'RAC'],
+  Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal'],
+  Health: ['Lords Pharmacy', 'Boots Pharmacy', 'NHS'],
+};
+
+function autoCategorize(merchantName) {
+  if (!merchantName) return 'Other';
+  const upper = merchantName.toUpperCase();
+  for (const [category, merchants] of Object.entries(CATEGORY_RULES)) {
+    for (const m of merchants) {
+      if (upper.includes(m.toUpperCase())) return category;
+    }
+  }
+  return 'Other';
+}
+
+// Known recurring bill merchants
+const KNOWN_RECURRING = ['EDF Energy', 'Fuse Energy', 'Octopus Energy', 'BT', 'Virgin', 'Sky', 'Sky Protect',
+  'Netflix', 'Disney+', 'Spotify', 'Utility Warehouse', 'O2', 'Uber One', 'Experian',
+  'OpenAI ChatGPT', 'Dropbox', 'Apple', 'Samsung Finance', 'Zopa', 'Esure Motor', 'Council Tax'];
+
+function isKnownRecurring(merchantName) {
+  if (!merchantName) return false;
+  const upper = merchantName.toUpperCase();
+  return KNOWN_RECURRING.some(m => upper.includes(m.toUpperCase()));
+}
+
+// Detect recurring bills from a set of transactions
+// Groups by merchant+amount, flags transactions appearing 2+ times
+function detectRecurringBills(transactions) {
+  const groups = {};
+  for (const t of transactions) {
+    const key = `${(t.merchant || '').toLowerCase()}|${Math.abs(t.amount).toFixed(2)}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(t);
+  }
+
+  const recurring = [];
+  for (const [key, txns] of Object.entries(groups)) {
+    if (txns.length >= 2) {
+      for (const t of txns) {
+        t.is_recurring_bill = true;
+        if (t.category === 'Other') t.category = 'Bills';
+      }
+      recurring.push({ merchant: txns[0].merchant, amount: txns[0].amount, count: txns.length });
+    }
+  }
+  return recurring;
+}
+
 // Suggest category based on past transactions for this merchant
 async function suggestCategory(merchantName) {
   try {
@@ -285,7 +341,10 @@ async function parseCSV(filePath, accountId) {
     const result = parseRow(row, format, headers);
     if (!result || !result.date) continue;
 
+    // Try past history first, then auto-categorize by rules
     const suggestion = await suggestCategory(result.merchant);
+    const autoCategory = suggestion.category !== 'Other' ? suggestion.category : autoCategorize(result.merchant);
+    const autoRecurring = suggestion.is_recurring_bill || isKnownRecurring(result.merchant);
 
     transactions.push({
       account_id: accountId,
@@ -293,13 +352,16 @@ async function parseCSV(filePath, accountId) {
       merchant: result.merchant,
       description: result.description,
       amount: result.amount,
-      category: suggestion.category,
-      is_recurring_bill: suggestion.is_recurring_bill,
-      suggested_category: suggestion.category,
+      category: autoCategory,
+      is_recurring_bill: autoRecurring,
+      suggested_category: autoCategory,
       imported_from: 'csv_upload',
       import_batch_id: batchId,
     });
   }
+
+  // Detect recurring bills by grouping merchant+amount (2+ occurrences)
+  const recurringBills = detectRecurringBills(transactions);
 
   return {
     format,
@@ -307,6 +369,7 @@ async function parseCSV(filePath, accountId) {
     count: transactions.length,
     total_debit: transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0),
     total_credit: transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
+    recurring_bills: recurringBills,
     transactions,
   };
 }
@@ -316,4 +379,4 @@ async function saveTransactions(transactions) {
   return created;
 }
 
-module.exports = { parseCSV, saveTransactions, normalizeMerchant, parseDate, detectFormat };
+module.exports = { parseCSV, saveTransactions, normalizeMerchant, parseDate, detectFormat, autoCategorize, detectRecurringBills, isKnownRecurring };

@@ -43,6 +43,7 @@ router.post('/csv', upload.single('file'), async (req, res, next) => {
       count: result.count,
       total_debit: result.total_debit.toFixed(2),
       total_credit: result.total_credit.toFixed(2),
+      recurring_bills: result.recurring_bills || [],
       transactions: result.transactions,
     });
   } catch (err) {
