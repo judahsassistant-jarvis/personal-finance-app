@@ -14,6 +14,7 @@ const billsRouter = require('./routes/bills');
 const debtConfigRouter = require('./routes/debtConfig');
 const forecastsRouter = require('./routes/forecasts');
 const importRouter = require('./routes/import');
+const availableRouter = require('./routes/available');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -37,6 +38,7 @@ app.use('/api/budgets', billsRouter);
 app.use('/api/debt-config', debtConfigRouter);
 app.use('/api/forecasts', forecastsRouter);
 app.use('/api/import', importRouter);
+app.use('/api/available', availableRouter);
 
 // Error handler (must be last)
 app.use(errorHandler);

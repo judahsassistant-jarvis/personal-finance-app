@@ -54,4 +54,7 @@ export const uploadCSV = (file, accountId) => {
 };
 export const confirmImport = (transactions) => api.post('/import/confirm', { transactions });
 
+// Available Funds
+export const getAvailableFunds = (month) => api.get('/available', { params: { month } });
+
 export default api;
