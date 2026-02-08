@@ -45,6 +45,7 @@ export const getPayoffSchedule = () => api.get('/forecasts/payoff');
 export const calculateForecast = (data) => api.post('/forecasts/calculate', data);
 export const recalculateForecast = (data) => api.post('/forecasts/recalculate', data);
 export const getAvalancheStrategy = () => api.get('/forecasts/strategy');
+export const getPromoCliffs = (months) => api.get('/forecasts/cliffs', { params: { months } });
 export const clearForecasts = () => api.delete('/forecasts');
 
 // Budget Suggestions

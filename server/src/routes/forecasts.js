@@ -187,6 +187,60 @@ router.get('/strategy', async (req, res, next) => {
   }
 });
 
+// GET /api/forecasts/cliffs - Get upcoming promo cliffs within forecast window
+router.get('/cliffs', async (req, res, next) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+    const now = new Date();
+    const endDate = new Date(now.getFullYear(), now.getMonth() + months, 1);
+
+    const cards = await CreditCard.findAll({
+      include: [{ model: CardBucket, as: 'buckets' }],
+    });
+
+    const cliffs = [];
+    for (const card of cards) {
+      for (const bucket of (card.buckets || [])) {
+        if (!bucket.promo_end_date) continue;
+        const promoEnd = new Date(bucket.promo_end_date);
+        if (promoEnd <= endDate && promoEnd >= now) {
+          const balance = parseFloat(bucket.current_balance || 0);
+          if (balance <= 0) continue;
+
+          const promoApr = parseFloat(bucket.promo_apr || 0);
+          const standardApr = parseFloat(card.standard_apr || 0);
+          const monthlyInterestIncrease = balance * (standardApr - promoApr) / 12;
+
+          cliffs.push({
+            card_id: card.id,
+            card_name: card.name,
+            bucket_id: bucket.id,
+            bucket_name: bucket.bucket_name,
+            promo_end_date: bucket.promo_end_date,
+            current_balance: balance,
+            from_apr: promoApr > 1 ? promoApr / 100 : promoApr,
+            to_apr: standardApr > 1 ? standardApr / 100 : standardApr,
+            monthly_interest_increase: parseFloat(monthlyInterestIncrease.toFixed(2)),
+            months_until_cliff: Math.ceil((promoEnd - now) / (30 * 24 * 60 * 60 * 1000)),
+          });
+        }
+      }
+    }
+
+    cliffs.sort((a, b) => new Date(a.promo_end_date) - new Date(b.promo_end_date));
+
+    res.json({
+      cliffs,
+      total_cliffs: cliffs.length,
+      warning: cliffs.length > 0
+        ? `${cliffs.length} promo rate(s) expiring within ${months} months`
+        : 'No upcoming promo expirations',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET forecast results (optional filter by month)
 router.get('/', async (req, res, next) => {
   try {
