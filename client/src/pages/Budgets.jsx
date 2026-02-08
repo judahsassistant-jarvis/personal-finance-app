@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getBudgets, createBudget, updateBudget, deleteBudget } from '../api/client';
+import { getBudgets, createBudget, updateBudget, deleteBudget, getBudgetSuggestions, applyBudgetSuggestions } from '../api/client';
 import FormField from '../components/FormField';
 import ErrorAlert from '../components/ErrorAlert';
 
@@ -14,6 +14,9 @@ export default function Budgets() {
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editAmount, setEditAmount] = useState('');
+  const [suggestions, setSuggestions] = useState(null);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [selectedSuggestions, setSelectedSuggestions] = useState(new Set());
 
   const monthDate = `${month}-01`;
 
@@ -77,6 +80,43 @@ export default function Budgets() {
     loadBudgets();
   };
 
+  const loadSuggestions = async () => {
+    setSuggestionsLoading(true);
+    try {
+      const { data } = await getBudgetSuggestions(monthDate);
+      setSuggestions(data);
+      setSelectedSuggestions(new Set(
+        data.suggestions.filter((s) => !s.already_budgeted).map((s) => s.category)
+      ));
+    } catch (err) {
+      console.error(err);
+    }
+    setSuggestionsLoading(false);
+  };
+
+  const toggleSuggestion = (category) => {
+    setSelectedSuggestions((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
+
+  const applySuggestions = async () => {
+    if (selectedSuggestions.size === 0) return;
+    const cats = suggestions.suggestions
+      .filter((s) => selectedSuggestions.has(s.category))
+      .map((s) => ({ category: s.category, amount: s.suggested_amount }));
+    try {
+      await applyBudgetSuggestions({ month: monthDate, categories: cats });
+      setSuggestions(null);
+      loadBudgets();
+    } catch (err) {
+      setSubmitError(err?.response?.data?.error || 'Failed to apply suggestions');
+    }
+  };
+
   const total = budgets.reduce((s, b) => s + parseFloat(b.allocated_amount || 0), 0);
   const totalSpent = budgets.reduce((s, b) => s + parseFloat(b.actual_spent || 0), 0);
   const usedCategories = budgets.map(b => b.budget_category);
@@ -94,6 +134,68 @@ export default function Budgets() {
         <label className="font-medium">Month:</label>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
           className="border rounded-md px-3 py-2" />
+      </div>
+
+      {/* Suggestions */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Budget Suggestions</h2>
+          <button
+            onClick={loadSuggestions}
+            disabled={suggestionsLoading}
+            className="px-4 py-2 bg-amber-500 text-white rounded-md text-sm font-medium hover:bg-amber-600 disabled:bg-amber-300"
+          >
+            {suggestionsLoading ? 'Analyzing...' : 'Get Suggestions'}
+          </button>
+        </div>
+        {suggestions && (
+          <>
+            <p className="text-sm text-gray-500 mb-3">
+              Based on {suggestions.analysis.transactionCount} transactions over {suggestions.analysis.monthsAnalyzed} month(s).
+              Total suggested: £{suggestions.analysis.totalSuggestedMonthly}
+            </p>
+            {suggestions.suggestions.length === 0 ? (
+              <p className="text-gray-400 text-sm">No spending patterns found. Import more transactions first.</p>
+            ) : (
+              <>
+                <div className="space-y-2 mb-4">
+                  {suggestions.suggestions.map((s) => (
+                    <div key={s.category} className="flex items-center justify-between py-2 border-b">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedSuggestions.has(s.category)}
+                          onChange={() => toggleSuggestion(s.category)}
+                          className="rounded"
+                        />
+                        <span className="font-medium">{s.category}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          s.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                          s.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>{s.confidence}</span>
+                        {s.already_budgeted && (
+                          <span className="text-xs text-indigo-600">(current: £{s.current_allocation?.toFixed(2)})</span>
+                        )}
+                      </label>
+                      <div className="text-sm text-right">
+                        <span className="font-mono font-medium">£{s.suggested_amount}</span>
+                        <span className="text-gray-400 ml-2">(avg: £{s.monthly_average})</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={applySuggestions}
+                  disabled={selectedSuggestions.size === 0}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:bg-gray-300"
+                >
+                  Apply {selectedSuggestions.size} Selected
+                </button>
+              </>
+            )}
+          </>
+        )}
       </div>
 
       <form onSubmit={handleAdd} className="bg-white rounded-lg shadow p-6 flex flex-wrap gap-4 items-end">

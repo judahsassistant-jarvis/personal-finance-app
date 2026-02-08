@@ -7,7 +7,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "db:sync": "node src/scripts/syncDb.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node src/tests/e2e-smoke.js"
   },
   "keywords": [],
   "author": "",

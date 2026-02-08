@@ -1,7 +1,7 @@
 # Phase 1 Progress
 
 **Date:** 2026-02-08
-**Status:** Day 2 Complete
+**Status:** Day 3 Complete
 
 ## Day 1 - Foundation ✅
 
@@ -85,6 +85,61 @@
 - [x] Frontend validation with inline error messages
 - [x] Sequelize error handling (validation, unique constraint, foreign key)
 
+## Day 3 - Debt Optimization & 12-Month Forecasting ✅
+
+### 1. Debt Avalanche Algorithm ✅
+- [x] Cards sorted by APR (highest first) for payment priority
+- [x] Per-bucket interest calculation with promo APR handling
+- [x] Minimum payment: MAX(balance * min_percentage, min_floor) per card
+- [x] Minimum allocation within card: highest APR buckets first
+- [x] Budget scaling when budget < total minimums required
+- [x] Avalanche priority scoring: `effective_apr * 1_000_000 + (30 - position) / 1000`
+- [x] Extra pool allocation globally by priority score
+- [x] APR normalization (handles values > 1 as percentages)
+- [x] `GET /api/forecasts/strategy` - Returns card priority order
+- [x] Exported helper functions: `getEffectiveApr`, `calcMinPayment`, `getAvalancheScore`
+
+### 2. 12-Month Cash Flow Simulation ✅
+- [x] Starting with current account balances + card balances
+- [x] Each month: apply recurring bills, budgets, minimum payments
+- [x] Reduce card balance by payment amount each month
+- [x] Calculate projected balance at end of each month
+- [x] Store forecasts in `forecast_results` table with cash flow data
+- [x] Cash flow fields: `account_balance`, `recurring_bills`, `budgeted_spending`, `available_for_debt`
+- [x] Auto-determine available funds when budget not specified
+- [x] `getCashFlow()` helper pulls live data from accounts, transactions, budgets
+
+### 3. Balance Transfer Promo Cliff Handling ✅
+- [x] Detect when promo APR expires within forecast window
+- [x] Track APR jump from promo_apr to card.standard_apr
+- [x] `GET /api/forecasts/cliffs` - Lists upcoming expirations with:
+  - From/to APR, monthly interest increase, months until cliff
+- [x] Forecast engine marks cliff months with `has_cliff` flag
+- [x] `cliff_details` JSONB field stores cliff event data per month
+- [x] Forecast response includes `cliffs` array with `balance_at_cliff`
+
+### 4. Live Re-Forecast on Input Change ✅
+- [x] `POST /api/forecasts/recalculate` endpoint
+- [x] Accepts: strategy, monthly_budget, months
+- [x] Auto-fetches cash flow data, runs full simulation
+- [x] Returns updated forecasts, payoff schedule, cliffs, cash flow
+- [x] Frontend: 600ms debounce auto-recalculate on strategy/budget change
+- [x] Forecast page auto-refreshes charts and tables on recalculation
+- [x] "Recalculating..." indicator during live updates
+
+### 5. Frontend Visualization ✅
+- [x] Dashboard: 12-month debt projection line chart (per-card + total)
+- [x] Dashboard: 5 summary cards (Balance, Debt, Available, Debt Free date, 12m forecast)
+- [x] Dashboard: Avalanche Priority panel (card order by APR with numbered badges)
+- [x] Dashboard: Payoff Dates panel (month, months away, total interest)
+- [x] Dashboard: Promo cliff warnings (from/to APR, expiry date, monthly cost)
+- [x] Forecast page: Debt Over Time stacked area chart with cliff reference lines
+- [x] Forecast page: Payment Breakdown bar chart (interest/min/extra)
+- [x] Forecast page: Monthly breakdown table with cliff highlighting (amber rows)
+- [x] Forecast page: Avalanche Priority Order with APR badges
+- [x] Chart cliff markers: dashed reference lines at promo expiration months
+- [x] Run Forecast button shows cliff warning count in success message
+
 ## Git Log
 ```
 928bdc3 Phase 1 Day 1: Foundation
@@ -92,7 +147,16 @@
 8603975 feat: CSV auto-categorization and recurring bill detection
 2cf51f7 feat: Available funds calculation
 5cf0f31 feat: Comprehensive input validation
+c5fdacb docs: Update Phase 1 progress for Day 2
+41f106d feat: Debt avalanche algorithm
+7c090ba feat: 12-month cash flow simulation
+765185d feat: Balance transfer promo cliff detection
+6193d98 feat: Live re-forecast on input changes
+3fc7568 feat: Debt & forecast visualization
 ```
+
+## E2E Test Results
+- 38 tests passing (all CRUD, forecast, available funds, import)
 
 ## How to Run
 
@@ -101,10 +165,7 @@ npm run start       # Both backend (:3001) and frontend (:3000)
 npm run dev         # With hot reload (nodemon + Vite HMR)
 ```
 
-## Next Steps (Day 3+)
-- [ ] Debt optimization engine (avalanche algorithm)
-- [ ] Forecast generation with 12+ month projection
-- [ ] Budget suggestion engine (based on spending history)
-- [ ] Recharts visualization for debt payoff timeline
+## Remaining Phase 1 Work
+- [ ] Budget suggestion engine (backend done, frontend integration pending)
 - [ ] Electron desktop packaging
 - [ ] End-to-end testing with real data
