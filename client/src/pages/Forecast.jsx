@@ -37,7 +37,7 @@ export default function Forecast() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [fRes, pRes, dcRes, avRes, stratRes, cliffRes] = await Promise.all([
+      const results = await Promise.allSettled([
         getForecasts(),
         getPayoffSchedule(),
         getDebtConfig(currentMonth),
@@ -45,14 +45,14 @@ export default function Forecast() {
         getAvalancheStrategy(),
         getPromoCliffs(12),
       ]);
-      setForecasts(fRes.data);
-      setPayoff(pRes.data);
-      setAvailableForDebt(avRes.data.available_for_debt);
-      setAvalancheCards(stratRes.data.cards || []);
-      setCliffs(cliffRes.data.cliffs || []);
+      if (results[0].status === 'fulfilled') setForecasts(results[0].value.data || []);
+      if (results[1].status === 'fulfilled') setPayoff(results[1].value.data || []);
+      if (results[3].status === 'fulfilled') setAvailableForDebt(results[3].value.data?.available_for_debt ?? 0);
+      if (results[4].status === 'fulfilled') setAvalancheCards(results[4].value.data?.cards || []);
+      if (results[5].status === 'fulfilled') setCliffs(results[5].value.data?.cliffs || []);
 
-      if (dcRes.data.length > 0) {
-        const cfg = dcRes.data[0];
+      if (results[2].status === 'fulfilled' && results[2].value.data?.length > 0) {
+        const cfg = results[2].value.data[0];
         setStrategy(cfg.strategy);
         setAutoCalculate(cfg.auto_calculate);
         if (cfg.monthly_payment_budget != null) {
@@ -356,6 +356,14 @@ export default function Forecast() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Debt-Free Celebration */}
+      {debtFreeDate && calcResult && calcResult.summary?.totalDebt === 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+          <h2 className="text-2xl font-bold text-green-700 mb-2">You're Debt Free!</h2>
+          <p className="text-green-600">All credit card balances are at zero. No forecast needed.</p>
         </div>
       )}
 

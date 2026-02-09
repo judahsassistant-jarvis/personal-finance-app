@@ -80,9 +80,9 @@ async function runForecast({ startMonth, months = 60, monthlyBudget = null, stra
     return { forecasts: [], payoffSchedules: [], debtFreeDate: null, summary: { totalDebt: 0 }, cliffs: [] };
   }
 
-  // 2. Build initial card states
+  // 2. Build initial card states (skip cards with no buckets)
   let bucketPosition = 0;
-  const cardStates = cards.map((card) => {
+  const cardStates = cards.filter((card) => card.buckets && card.buckets.length > 0).map((card) => {
     const buckets = (card.buckets || []).map((b) => {
       const state = {
         id: b.id,

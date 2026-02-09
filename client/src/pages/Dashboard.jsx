@@ -41,18 +41,18 @@ export default function Dashboard() {
     async function loadAll() {
       setAvailLoading(true);
       try {
-        const [avRes, fRes, pRes, sRes, cRes] = await Promise.all([
+        const results = await Promise.allSettled([
           getAvailableFunds(currentMonth),
           getForecasts(),
           getPayoffSchedule(),
           getAvalancheStrategy(),
           getPromoCliffs(12),
         ]);
-        setAvailable(avRes.data);
-        setForecasts(fRes.data);
-        setPayoff(pRes.data);
-        setStrategy(sRes.data.cards || []);
-        setCliffs(cRes.data.cliffs || []);
+        if (results[0].status === 'fulfilled') setAvailable(results[0].value.data);
+        if (results[1].status === 'fulfilled') setForecasts(results[1].value.data || []);
+        if (results[2].status === 'fulfilled') setPayoff(results[2].value.data || []);
+        if (results[3].status === 'fulfilled') setStrategy(results[3].value.data?.cards || []);
+        if (results[4].status === 'fulfilled') setCliffs(results[4].value.data?.cliffs || []);
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
       }
@@ -103,18 +103,39 @@ export default function Dashboard() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
 
+      {/* Debt-Free Celebration */}
+      {totalDebt === 0 && cards.length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+          <h2 className="text-2xl font-bold text-green-700 mb-2">You're Debt Free!</h2>
+          <p className="text-green-600">All credit card balances are at zero. Great work!</p>
+        </div>
+      )}
+
+      {/* Budget Exceeds Income Warning */}
+      {available && available.raw_available < 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-red-800 mb-1">Warning: Outflows Exceed Balance</h3>
+          <p className="text-sm text-red-700">
+            Your recurring bills, budgets, and minimum payments (£{available.total_outflow.toFixed(2)})
+            exceed your total balance (£{available.total_balance.toFixed(2)}) by
+            £{Math.abs(available.raw_available).toFixed(2)}.
+            Consider reducing budgets or increasing income.
+          </p>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <SummaryCard title="Total Balance" value={`£${totalBalance.toFixed(2)}`}
           color="bg-green-50 text-green-700 border-green-200" />
         <SummaryCard title="Total Debt" value={`£${totalDebt.toFixed(2)}`}
-          color="bg-red-50 text-red-700 border-red-200" />
+          color={totalDebt === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'} />
         <SummaryCard title="Available for Debt"
           value={availLoading ? '...' : available ? `£${available.available_for_debt.toFixed(2)}` : '—'}
           color="bg-amber-50 text-amber-700 border-amber-200" />
         <SummaryCard title="Debt Free"
-          value={debtFreeDate ? debtFreeDate.slice(0, 7) : '—'}
-          subtitle={debtFreeDate ? `${monthsToPayoff} months` : null}
+          value={totalDebt === 0 ? 'Now!' : debtFreeDate ? debtFreeDate.slice(0, 7) : '—'}
+          subtitle={totalDebt === 0 ? null : debtFreeDate ? `${monthsToPayoff} months` : null}
           color="bg-indigo-50 text-indigo-700 border-indigo-200" />
         <SummaryCard title="Forecast Balance (12m)"
           value={lastForecastDebt != null ? `£${lastForecastDebt.toFixed(2)}` : '—'}

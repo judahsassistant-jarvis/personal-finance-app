@@ -141,6 +141,7 @@ router.get('/strategy', async (req, res, next) => {
     });
 
     const strategy = cards
+      .filter((card) => card.buckets && card.buckets.length > 0)
       .map((card) => {
         const buckets = (card.buckets || []).map((b) => ({
           id: b.id,

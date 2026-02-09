@@ -151,8 +151,7 @@ describe('CSV Parser - Pure Functions', () => {
 
     test('categorizes health merchants', () => {
       expect(autoCategorize('Lords Pharmacy')).toBe('Health');
-      // Note: 'Boots Pharmacy' matches 'Boots' in Shopping before 'Boots Pharmacy' in Health
-      // This is a known categorization priority issue (Shopping checked before Health)
+      expect(autoCategorize('Boots Pharmacy')).toBe('Health');
       expect(autoCategorize('NHS')).toBe('Health');
     });
 

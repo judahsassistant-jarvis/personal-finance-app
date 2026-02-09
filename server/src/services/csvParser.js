@@ -85,23 +85,31 @@ function normalizeMerchant(rawMerchant) {
 }
 
 // Auto-categorization rules based on merchant name
+// Order matters: more specific entries checked first (longer matches before shorter)
 const CATEGORY_RULES = {
-  Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
+  Health: ['Lords Pharmacy', 'Boots Pharmacy', 'NHS'],
   Food: ['Uber Eats', 'Deliveroo', 'Just Eat', 'McDonalds', 'Burger King', 'KFC', 'Nandos', 'Costa Coffee', 'Starbucks', 'Greggs', 'Subway'],
   Bills: ['EDF Energy', 'Fuse Energy', 'Octopus Energy', 'BT', 'Virgin', 'Utility Warehouse', 'Thames Water', 'Council Tax', 'TV Licence', 'Sky', 'Sky Protect'],
   Subscriptions: ['Netflix', 'Disney+', 'Spotify', 'Amazon Prime', 'YouTube', 'Apple', 'Dropbox', 'OpenAI ChatGPT', 'Uber One', 'Experian', 'Google Play'],
   Transport: ['Uber', 'Shell', 'BP', 'Esso', 'NCP Parking', 'TfL', 'DVLA', 'Esure Motor', 'RAC'],
+  Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
   Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal'],
-  Health: ['Lords Pharmacy', 'Boots Pharmacy', 'NHS'],
 };
 
 function autoCategorize(merchantName) {
   if (!merchantName) return 'Other';
   const upper = merchantName.toUpperCase();
+  // Build flat list of all (merchant, category) pairs, sorted by merchant name length descending
+  // This ensures "Boots Pharmacy" matches Health before "Boots" matches Shopping
+  const allMappings = [];
   for (const [category, merchants] of Object.entries(CATEGORY_RULES)) {
     for (const m of merchants) {
-      if (upper.includes(m.toUpperCase())) return category;
+      allMappings.push({ merchant: m, category });
     }
+  }
+  allMappings.sort((a, b) => b.merchant.length - a.merchant.length);
+  for (const { merchant, category } of allMappings) {
+    if (upper.includes(merchant.toUpperCase())) return category;
   }
   return 'Other';
 }
