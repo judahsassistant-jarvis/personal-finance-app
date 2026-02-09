@@ -17,6 +17,7 @@ export default function Budgets() {
   const [suggestions, setSuggestions] = useState(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState(new Set());
+  const [editedAmounts, setEditedAmounts] = useState({});
 
   const monthDate = `${month}-01`;
 
@@ -88,6 +89,10 @@ export default function Budgets() {
       setSelectedSuggestions(new Set(
         data.suggestions.filter((s) => !s.already_budgeted).map((s) => s.category)
       ));
+      // Pre-fill editable amounts
+      const amounts = {};
+      data.suggestions.forEach((s) => { amounts[s.category] = s.suggested_amount; });
+      setEditedAmounts(amounts);
     } catch (err) {
       console.error(err);
     }
@@ -107,7 +112,7 @@ export default function Budgets() {
     if (selectedSuggestions.size === 0) return;
     const cats = suggestions.suggestions
       .filter((s) => selectedSuggestions.has(s.category))
-      .map((s) => ({ category: s.category, amount: s.suggested_amount }));
+      .map((s) => ({ category: s.category, amount: editedAmounts[s.category] || s.suggested_amount }));
     try {
       await applyBudgetSuggestions({ month: monthDate, categories: cats });
       setSuggestions(null);
@@ -178,20 +183,40 @@ export default function Budgets() {
                           <span className="text-xs text-indigo-600">(current: £{s.current_allocation?.toFixed(2)})</span>
                         )}
                       </label>
-                      <div className="text-sm text-right">
-                        <span className="font-mono font-medium">£{s.suggested_amount}</span>
-                        <span className="text-gray-400 ml-2">(avg: £{s.monthly_average})</span>
+                      <div className="text-sm text-right flex items-center gap-2">
+                        <span className="text-gray-400">(avg: £{s.monthly_average})</span>
+                        <div className="flex items-center gap-1">
+                          <span>£</span>
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={editedAmounts[s.category] ?? s.suggested_amount}
+                            onChange={(e) => setEditedAmounts({ ...editedAmounts, [s.category]: parseFloat(e.target.value) || 0 })}
+                            className="border rounded px-2 py-1 w-20 text-right text-sm font-mono"
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={applySuggestions}
-                  disabled={selectedSuggestions.size === 0}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:bg-gray-300"
-                >
-                  Apply {selectedSuggestions.size} Selected
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={applySuggestions}
+                    disabled={selectedSuggestions.size === 0}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:bg-gray-300"
+                  >
+                    Apply {selectedSuggestions.size} Selected
+                  </button>
+                  {selectedSuggestions.size > 0 && (
+                    <span className="text-sm text-gray-500">
+                      Total: £{suggestions.suggestions
+                        .filter((s) => selectedSuggestions.has(s.category))
+                        .reduce((sum, s) => sum + (editedAmounts[s.category] || s.suggested_amount), 0)
+                        .toFixed(2)}
+                    </span>
+                  )}
+                </div>
               </>
             )}
           </>
