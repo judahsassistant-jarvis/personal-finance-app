@@ -2,6 +2,7 @@
   "name": "personal-finance-app",
   "version": "1.0.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "start": "concurrently \"npm run start:server\" \"npm run start:client\"",
     "start:server": "cd server && npm start",
@@ -14,9 +15,51 @@
     "test": "cd server && npm test",
     "test:unit": "cd server && npm run test:unit",
     "test:api": "cd server && npm run test:api",
-    "test:all": "cd server && npm run test:unit && npm run test:api && npm test"
+    "test:all": "cd server && npm run test:unit && npm run test:api && npm test",
+    "electron:dev": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"sleep 3 && electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:linux": "npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.personal-finance.app",
+    "productName": "Personal Finance App",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "client/dist",
+        "to": "client/dist"
+      },
+      {
+        "from": "server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!node_modules/.cache/**"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office;Finance"
+    },
+    "deb": {
+      "depends": [
+        "postgresql",
+        "postgresql-client"
+      ]
+    }
   },
   "devDependencies": {
-    "concurrently": "^9.0.0"
+    "concurrently": "^9.0.0",
+    "electron": "^40.2.1",
+    "electron-builder": "^26.7.0"
   }
 }

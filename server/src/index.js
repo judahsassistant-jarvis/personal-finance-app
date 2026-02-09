@@ -40,6 +40,17 @@ app.use('/api/forecasts', forecastsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/available', availableRouter);
 
+// Serve static frontend files in production/Electron mode
+if (process.env.NODE_ENV === 'production' || process.env.ELECTRON) {
+  const clientDistPath = process.env.CLIENT_DIST_PATH ||
+    path.join(__dirname, '..', '..', 'client', 'dist');
+  app.use(express.static(clientDistPath));
+  // SPA fallback: serve index.html for non-API routes
+  app.get(/^(?!\/api).*/, (req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
 // Error handler (must be last)
 app.use(errorHandler);
 
