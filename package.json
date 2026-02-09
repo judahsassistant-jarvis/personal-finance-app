@@ -10,7 +10,11 @@
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm run build",
-    "db:sync": "cd server && npm run db:sync"
+    "db:sync": "cd server && npm run db:sync",
+    "test": "cd server && npm test",
+    "test:unit": "cd server && npm run test:unit",
+    "test:api": "cd server && npm run test:api",
+    "test:all": "cd server && npm run test:unit && npm run test:api && npm test"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

@@ -7,7 +7,10 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "db:sync": "node src/scripts/syncDb.js",
-    "test": "node src/tests/e2e-smoke.js"
+    "test": "node src/tests/e2e-smoke.js",
+    "test:unit": "jest --testPathPatterns='(debtForecast|csvParser)\\.test\\.js$'",
+    "test:api": "jest --testPathPatterns='api\\.test\\.js$' --testTimeout=30000",
+    "test:jest": "jest --testTimeout=30000"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +28,10 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/plugin-transform-modules-commonjs": "^7.28.6",
+    "babel-jest": "^30.2.0",
+    "jest": "^30.2.0",
     "nodemon": "^3.1.11"
   }
 }
