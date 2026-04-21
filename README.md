@@ -1,151 +1,104 @@
 # Personal Finance App
 
-A personal cash flow and debt optimization application that imports bank statements, categorizes spending, calculates available funds, and runs debt payoff forecasts using the avalanche method.
+Private UK-focused personal-finance web app. Firebase + React 19 + Vite + Redux Toolkit + Tailwind 4 + Recharts.
 
-## Features
+**Current branch: `phase-2a`** — Firebase rewrite of Phase 1 for private solo use (dogfood). See `../staging/personal-finance-app/PHASE-2-PLAN.md` for the full scope.
 
-- **CSV Statement Import** - Supports Nationwide, Revolut, and Virgin Money formats with auto-encoding detection
-- **Transaction Categorization** - 50+ merchant normalizations, auto-categorization into 7 categories, recurring bill detection
-- **Budget Management** - Monthly budget allocations with spending pattern analysis and AI-powered suggestions
-- **Debt Optimization** - Avalanche (highest APR first) and snowball (lowest balance first) strategies
-- **12-Month Forecasting** - Cash flow simulation with per-card breakdown, payoff dates, and total interest projections
-- **Balance Transfer Cliff Detection** - Warns when promo rates expire and shows the interest impact
-- **Live Re-Forecast** - Real-time recalculation as you adjust strategy or budget
-- **Dashboard** - Summary cards, debt projection chart, avalanche priority, payoff timeline, cash flow breakdown
-- **Electron Desktop App** - Runs as a native Linux desktop application
+## Modules
 
-## Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| Frontend | React 18, Vite, TailwindCSS v4, Redux Toolkit, Recharts |
-| Backend | Express 5, Sequelize ORM, PostgreSQL |
-| Desktop | Electron with electron-builder |
-| Testing | Jest (unit + integration), custom e2e smoke tests |
+- **Dashboard** — Snoop-style cycle view: safe-to-spend, bills remaining, days-to-payday, discretionary calc.
+- **Accounts** — current, savings, cash ISA, S&S ISA, SIPP, investment, pension. Liquid vs locked distinction.
+- **Transactions** — auto-categorised, recurring detection, CSV import from Nationwide / Revolut / Virgin Money.
+- **Budgets** — category allocations with suggestion engine.
+- **Debt Planner** — cards, BT cards, BNPL, personal loans, overdrafts, store cards. Avalanche/snowball strategies, What-If BT scenario tool, promo cliff detection, payment reminders. Auto-suggested budget = discretionary from Dashboard.
+- **Forecast** — multi-account balance projection; liquid accounts projected via income/bills flows, locked accounts via growth rate. SIPP projects to qualifying age.
 
 ## Prerequisites
 
-- **Node.js** v18+
-- **PostgreSQL** 14+ (running locally)
-- **npm** v9+
+- **Node.js** v20+ (dev works on any recent LTS; Cloud Functions runtime pins to Node 20).
+- **Java 21+** — required by the Firestore emulator. Install via `winget install Microsoft.OpenJDK.21` on Windows. `JAVA_HOME` must point to the JDK 21 install (set automatically by winget for new shells).
+- **Firebase CLI** — `npm install -g firebase-tools`, then `firebase login` using `judahsassistant@gmail.com`.
 
-## Quick Start
+## Local dev loop
 
 ```bash
-# 1. Clone the repository
-git clone <repo-url>
-cd personal-finance-app
-
-# 2. Install dependencies
+# 1. Install deps (first time only)
 npm install
-cd server && npm install && cd ..
 cd client && npm install && cd ..
+cd functions && npm install && cd ..
 
-# 3. Set up PostgreSQL
-# Create database and user (adjust as needed)
-createdb personal_finance
-# Configure connection in server/.env
-
-# 4. Start the application
+# 2. Start emulators + client together
 npm run dev
 ```
 
-The app will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:3001
+This runs:
+- Firebase emulator suite on ports 9099 (auth), 8080 (firestore), 5001 (functions), 5000 (hosting), 4000 (UI at `http://localhost:4000`).
+- Vite dev server for the client on port 5173 (MC runs on 3000, so PFA stays out of its way).
+
+The client connects to the emulator suite when `VITE_USE_FIREBASE_EMULATOR=true` in `client/.env` (default in dev).
+
+To point the client at production Firebase instead:
+```bash
+# edit client/.env, set VITE_USE_FIREBASE_EMULATOR=false
+npm run dev:client
+```
+
+## Environment files
+
+- `client/.env` — gitignored, contains the real Firebase config (API key, project ID, etc.). Copy `client/.env.example` as a template.
+- `client/.env.example` — committed template showing required keys.
+
+Firebase client config is not secret (public by design — auth rules enforce security), but env-var pattern keeps dev/prod swaps clean.
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start both server and client in dev mode (hot reload) |
-| `npm run start` | Start both in production mode |
-| `npm run build` | Build the React frontend |
-| `npm run test` | Run e2e smoke tests (38 tests) |
-| `npm run test:unit` | Run Jest unit tests (67 tests) |
-| `npm run test:api` | Run Jest API integration tests (39 tests) |
-| `npm run test:all` | Run all test suites |
-| `npm run db:sync` | Sync database schema |
-| `npm run electron:dev` | Run as Electron desktop app (dev mode) |
-| `npm run electron:build:linux` | Build Linux packages (.deb, .AppImage) |
+| `npm run dev` | Emulator suite + Vite client together |
+| `npm run dev:emulators` | Emulators only |
+| `npm run dev:client` | Client only (connects to emulators if `VITE_USE_FIREBASE_EMULATOR=true`) |
+| `npm run build` | Build Vite client to `client/dist/` |
+| `npm run deploy` | Deploy everything (rules, indexes, functions, hosting) to production Firebase |
+| `npm run deploy:rules` | Deploy Firestore rules only |
+| `npm run deploy:indexes` | Deploy Firestore indexes only |
+| `npm run deploy:functions` | Deploy Cloud Functions only |
+| `npm run deploy:hosting` | Build + deploy hosting only |
 
-## Database
+Scripts prefixed `_phase1:*` invoke the legacy Express/Electron stack — kept during migration, removed in Sprint 4.
 
-The app uses PostgreSQL with 9 tables:
+## Firebase project
 
-- `accounts` - Bank accounts (checking/savings)
-- `credit_cards` - Card details with APR and minimum payment rules
-- `card_buckets` - Multiple balance buckets per card (purchases, balance transfers)
-- `transactions` - Transaction records with categories and recurring flags
-- `monthly_budgets` - Monthly budget allocations by category
-- `debt_config` - Debt optimization strategy configuration
-- `forecast_results` - Cached forecast output with per-card breakdowns
-- `payoff_schedule` - Card payoff dates
-- `audit_log` - Entity change tracking
+- **Project ID:** `personal-finance-app-dev-3ffb2`
+- **Region:** `europe-west2` (London)
+- **Owner:** `judahsassistant@gmail.com`
+- **Firestore mode:** Production rules (security enforced)
+- **Auth providers:** Google
 
-Tables are auto-created/migrated on server startup via `sequelize.sync({ alter: true })`.
+## Data model
 
-## Configuration
-
-Create `server/.env` with:
+10 Firestore collections. See [PHASE-2-PLAN.md §3.1](../staging/personal-finance-app/PHASE-2-PLAN.md) for full field list.
 
 ```
-DB_NAME=personal_finance
-DB_USER=your_username
-DB_PASS=
-DB_HOST=/var/run/postgresql
-DB_DIALECT=postgres
-PORT=3001
+users              accounts          debts (was credit_cards)
+card_buckets       transactions      recurring_bills
+monthly_budgets    debt_config       forecast_snapshots
+audit_log
 ```
 
-## API Endpoints
+Plus `system/bank_holidays` (global cache, Cloud Function writes only).
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Health check |
-| CRUD | `/api/accounts` | Bank account management |
-| CRUD | `/api/credit-cards` | Credit card management |
-| CRUD | `/api/card-buckets` | Card bucket management |
-| CRUD | `/api/transactions` | Transaction management |
-| CRUD | `/api/budgets` | Budget management |
-| GET | `/api/budgets/suggestions` | Budget suggestions based on spending |
-| POST | `/api/budgets/apply-suggestions` | Apply budget suggestions |
-| CRUD | `/api/debt-config` | Debt strategy configuration |
-| POST | `/api/forecasts/calculate` | Run full forecast |
-| POST | `/api/forecasts/recalculate` | Live re-forecast |
-| GET | `/api/forecasts/strategy` | Avalanche priority order |
-| GET | `/api/forecasts/cliffs` | Promo cliff warnings |
-| POST | `/api/import/csv` | Upload and parse CSV |
-| POST | `/api/import/confirm` | Save parsed transactions |
-| GET | `/api/available` | Available funds calculation |
+## Tests
 
-## Project Structure
+2a reduces test scope to Jest unit tests + Firestore rules tests. WCAG / integration / UAT deferred to 2b.
 
-```
-personal-finance-app/
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── pages/          # 7 pages (Dashboard, Accounts, etc.)
-│   │   ├── components/     # Shared components
-│   │   ├── store/          # Redux slices
-│   │   └── api/            # API client functions
-│   └── dist/               # Built output
-├── server/                 # Express backend
-│   ├── src/
-│   │   ├── models/         # Sequelize models (9 tables)
-│   │   ├── routes/         # API route handlers
-│   │   ├── services/       # Business logic
-│   │   │   ├── debtForecast.js     # Avalanche/snowball engine
-│   │   │   ├── csvParser.js        # Multi-format CSV parser
-│   │   │   └── budgetSuggestions.js # Spending analysis
-│   │   ├── middleware/     # Validation, error handling
-│   │   └── tests/          # Unit + integration tests
-│   └── .env                # Database configuration
-├── electron/               # Electron main process
-│   └── main.js
-└── package.json            # Root scripts + electron-builder config
+```bash
+# TODO: wire in Sprint 10
 ```
 
-## License
+## Migrating from Phase 1
 
-Private - Personal use only.
+Phase 1 lived on `main` with Postgres + Express + Electron. This branch deletes those in Sprint 4 and rewires Redux thunks to Firestore SDK. Until Sprint 4 lands, `server/` and `electron/` remain on disk; don't run them.
+
+## Status
+
+Sprint 1 (foundation) done. See [PHASE-2-PLAN.md §4a](../staging/personal-finance-app/PHASE-2-PLAN.md) for sprint breakdown.
