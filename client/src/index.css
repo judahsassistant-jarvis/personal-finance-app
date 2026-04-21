@@ -1,1 +1,75 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Design system — Monarch-leaning.
+ * Selected 2026-04-21 from /design preview. See DESIGN.md for the full spec.
+ *
+ * - Warm cream background (not pure white) — approachable financial coaching feel.
+ * - Teal accent — soft, trustworthy.
+ * - Deeper green for positive monetary values.
+ * - Warm rose for negative.
+ * - Amber for warnings (BT cliffs, overdraft, low safe-to-spend).
+ *
+ * Dark mode: Sprint 7.5 lands the `.dark` class + alternate palette.
+ */
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --color-background: oklch(0.97 0.015 90);
+  --color-foreground: oklch(0.2 0.02 180);
+
+  --color-card: oklch(0.995 0.005 90);
+  --color-card-foreground: oklch(0.2 0.02 180);
+
+  --color-popover: oklch(0.995 0.005 90);
+  --color-popover-foreground: oklch(0.2 0.02 180);
+
+  --color-primary: oklch(0.22 0.02 180);
+  --color-primary-foreground: oklch(0.985 0 0);
+
+  --color-secondary: oklch(0.92 0.03 175);
+  --color-secondary-foreground: oklch(0.25 0.03 180);
+
+  --color-muted: oklch(0.94 0.02 175);
+  --color-muted-foreground: oklch(0.48 0.025 180);
+
+  --color-accent: oklch(0.56 0.13 178);
+  --color-accent-foreground: oklch(0.985 0 0);
+
+  --color-positive: oklch(0.54 0.16 150);
+  --color-positive-foreground: oklch(0.985 0 0);
+
+  --color-destructive: oklch(0.62 0.18 30);
+  --color-destructive-foreground: oklch(0.985 0 0);
+
+  --color-warning: oklch(0.8 0.16 65);
+  --color-warning-foreground: oklch(0.205 0 0);
+
+  --color-border: oklch(0.89 0.02 175);
+  --color-input: oklch(0.89 0.02 175);
+  --color-ring: oklch(0.56 0.13 178);
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

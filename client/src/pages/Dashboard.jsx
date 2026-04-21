@@ -1,18 +1,18 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Wallet, Lock, TrendingDown, PiggyBank } from 'lucide-react';
 import { fetchAccounts } from '../store/accountsSlice.js';
 import { fetchDebts } from '../store/debtsSlice.js';
 import { fetchBuckets } from '../store/cardBucketsSlice.js';
 import { fetchTransactions } from '../store/transactionsSlice.js';
 import { formatGBP, CARD_LIKE_SUBTYPES, LIQUIDITY } from '../firebase/schema.js';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
+import { Badge } from '../components/ui/badge.jsx';
+import { Separator } from '../components/ui/separator.jsx';
 
 /**
  * Minimal connected-data Dashboard.
- *
- * Sprint 4 stub: proves Firestore data flows through Redux and the UI renders.
- * The real Snoop-style Dashboard (safe-to-spend, remaining bills, days-to-payday,
- * discretionary calc) lands in Sprint 4c once pay_cycle + recurring-bills
- * services are wired up.
+ * Snoop-style cycle view replaces this in Sprint 4c.
  */
 export default function Dashboard() {
   const dispatch = useDispatch();
@@ -20,9 +20,7 @@ export default function Dashboard() {
   const debts = useSelector((s) => s.debts.items);
   const buckets = useSelector((s) => s.cardBuckets.items);
   const txCount = useSelector((s) => s.transactions.items.length);
-  const loading = useSelector((s) =>
-    s.accounts.loading || s.debts.loading || s.cardBuckets.loading,
-  );
+  const loading = useSelector((s) => s.accounts.loading || s.debts.loading || s.cardBuckets.loading);
 
   useEffect(() => {
     dispatch(fetchAccounts());
@@ -31,8 +29,8 @@ export default function Dashboard() {
     dispatch(fetchTransactions());
   }, [dispatch]);
 
-  if (loading && accounts.length === 0 && debts.length === 0) {
-    return <p className="text-gray-500">Loading your data…</p>;
+  if (loading && !accounts.length && !debts.length) {
+    return <p className="text-muted-foreground">Loading your data…</p>;
   }
 
   const liquidTotal = accounts
@@ -46,8 +44,7 @@ export default function Dashboard() {
     .filter((d) => CARD_LIKE_SUBTYPES.has(d.subtype))
     .reduce((s, d) => {
       const cardBuckets = buckets.filter((b) => b.debt_id === d.id);
-      const bucketSum = cardBuckets.reduce((bs, b) => bs + Number(b.balance_pennies || 0), 0);
-      return s + bucketSum;
+      return s + cardBuckets.reduce((bs, b) => bs + Number(b.balance_pennies || 0), 0);
     }, 0);
   const otherDebt = debts
     .filter((d) => !CARD_LIKE_SUBTYPES.has(d.subtype))
@@ -59,88 +56,161 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <span className="text-xs text-gray-400">Sprint 4 minimal view · Snoop-style in 4c</span>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">Snapshot of your accounts and debts.</p>
+        </div>
+        <Badge variant="muted">Sprint 4 · minimal</Badge>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card title="Liquid balance" value={formatGBP(liquidTotal)} color="green" />
-        <Card title="Locked (ISA/SIPP etc.)" value={formatGBP(lockedTotal)} color="indigo" />
-        <Card title="Total debt" value={formatGBP(totalDebt)} color="red" />
-        <Card title="Net worth" value={formatGBP(netWorth)} color={netWorth >= 0 ? 'green' : 'red'} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <HeroCard
+          icon={<Wallet className="w-4 h-4" />}
+          label="Liquid balance"
+          value={formatGBP(liquidTotal)}
+          caption="Current + savings + cash ISA"
+        />
+        <HeroCard
+          icon={<Lock className="w-4 h-4" />}
+          label="Locked"
+          value={formatGBP(lockedTotal)}
+          caption="ISA, SIPP, investments"
+        />
+        <HeroCard
+          icon={<TrendingDown className="w-4 h-4" />}
+          label="Total debt"
+          value={formatGBP(totalDebt)}
+          caption={`${debts.length} account${debts.length === 1 ? '' : 's'}`}
+          negative
+        />
+        <HeroCard
+          icon={<PiggyBank className="w-4 h-4" />}
+          label="Net worth"
+          value={formatGBP(netWorth)}
+          caption="Assets minus debt"
+          positive={netWorth >= 0}
+          negative={netWorth < 0}
+        />
       </div>
 
-      <Section title="Accounts">
-        {accounts.length === 0 ? <Empty msg="No accounts yet." /> : accounts.map((a) => (
-          <Row
-            key={a.id}
-            left={<><span className="font-medium">{a.name}</span>
-              <span className="ml-2 text-xs text-gray-500">{a.subtype}</span>
-              <span className={`ml-2 text-xs ${a.liquidity === 'liquid' ? 'text-green-600' : 'text-amber-600'}`}>{a.liquidity}</span>
-            </>}
-            right={formatGBP(a.balance_pennies || 0)}
-            rightColor={(a.balance_pennies || 0) >= 0 ? 'text-green-700' : 'text-red-700'}
-          />
-        ))}
-      </Section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Accounts</CardTitle>
+          <CardDescription>{accounts.length} account{accounts.length === 1 ? '' : 's'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {accounts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No accounts yet.</p>
+          ) : (
+            <div className="-my-3">
+              {accounts.map((a, i) => (
+                <div key={a.id}>
+                  {i > 0 && <Separator />}
+                  <DataRow
+                    title={a.name}
+                    subtitleParts={[
+                      <Badge key="subtype" variant="muted">{a.subtype}</Badge>,
+                      <Badge key="liquidity" variant={a.liquidity === 'liquid' ? 'positive' : 'accent'}>{a.liquidity}</Badge>,
+                    ]}
+                    amount={a.balance_pennies || 0}
+                    amountPositive
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <Section title="Debts">
-        {debts.length === 0 ? <Empty msg="No debts yet." /> : debts.map((d) => {
-          const cardBuckets = buckets.filter((b) => b.debt_id === d.id);
-          const balance = CARD_LIKE_SUBTYPES.has(d.subtype)
-            ? cardBuckets.reduce((s, b) => s + Number(b.balance_pennies || 0), 0)
-            : Number(d.balance_pennies || 0);
-          return (
-            <Row
-              key={d.id}
-              left={<><span className="font-medium">{d.name}</span>
-                <span className="ml-2 text-xs text-gray-500">{d.subtype}</span>
-                {d.priority && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">priority</span>}
-              </>}
-              right={formatGBP(balance)}
-              rightColor={balance > 0 ? 'text-red-700' : 'text-green-700'}
-            />
-          );
-        })}
-      </Section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Debts</CardTitle>
+          <CardDescription>{debts.length} account{debts.length === 1 ? '' : 's'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {debts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No debts yet.</p>
+          ) : (
+            <div className="-my-3">
+              {debts.map((d, i) => {
+                const cardBuckets = buckets.filter((b) => b.debt_id === d.id);
+                const balance = CARD_LIKE_SUBTYPES.has(d.subtype)
+                  ? cardBuckets.reduce((s, b) => s + Number(b.balance_pennies || 0), 0)
+                  : Number(d.balance_pennies || 0);
+                const subtitleParts = [
+                  <Badge key="subtype" variant="muted">{d.subtype}</Badge>,
+                ];
+                if (d.priority) {
+                  subtitleParts.push(<Badge key="priority" variant="warning">priority</Badge>);
+                }
+                if (d.standard_apr) {
+                  subtitleParts.push(
+                    <span key="apr" className="text-xs text-muted-foreground tabular-nums">
+                      {(d.standard_apr * 100).toFixed(1)}% APR
+                    </span>,
+                  );
+                }
+                return (
+                  <div key={d.id}>
+                    {i > 0 && <Separator />}
+                    <DataRow
+                      title={d.name}
+                      subtitleParts={subtitleParts}
+                      amount={balance}
+                      amountNegative={balance > 0}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <p className="text-xs text-gray-400">{txCount} transaction(s) loaded.</p>
+      <p className="text-xs text-muted-foreground">
+        {txCount} transaction{txCount === 1 ? '' : 's'} loaded · Snoop-style cycle view lands in Sprint 4c
+      </p>
     </div>
   );
 }
 
-function Card({ title, value, color }) {
-  const cls = {
-    green: 'bg-green-50 text-green-800 border-green-200',
-    red: 'bg-red-50 text-red-800 border-red-200',
-    indigo: 'bg-indigo-50 text-indigo-800 border-indigo-200',
-  }[color] || 'bg-gray-50 text-gray-800 border-gray-200';
+function HeroCard({ icon, label, value, caption, positive, negative }) {
+  const valueClass = negative
+    ? 'text-destructive'
+    : positive
+      ? 'text-positive'
+      : 'text-foreground';
   return (
-    <div className={`rounded-lg border p-4 ${cls}`}>
-      <div className="text-sm font-medium">{title}</div>
-      <div className="text-2xl font-bold mt-1 font-mono">{value}</div>
-    </div>
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          {icon}
+          <CardDescription className="text-xs uppercase tracking-wide">{label}</CardDescription>
+        </div>
+        <CardTitle className={`text-2xl font-semibold font-mono tabular-nums mt-1 ${valueClass}`}>
+          {value}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 -mt-2">
+        <p className="text-xs text-muted-foreground">{caption}</p>
+      </CardContent>
+    </Card>
   );
 }
 
-function Section({ title, children }) {
+function DataRow({ title, subtitleParts, amount, amountPositive, amountNegative }) {
+  const cls = amountNegative ? 'text-destructive' : amountPositive ? 'text-foreground' : 'text-foreground';
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-lg font-semibold mb-3">{title}</h2>
-      <div className="space-y-2">{children}</div>
+    <div className="flex items-center justify-between py-3">
+      <div className="min-w-0">
+        <div className="font-medium text-sm text-foreground truncate">{title}</div>
+        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+          {subtitleParts}
+        </div>
+      </div>
+      <span className={`font-mono tabular-nums font-medium ${cls}`}>
+        {formatGBP(amount)}
+      </span>
     </div>
   );
-}
-
-function Row({ left, right, rightColor }) {
-  return (
-    <div className="flex justify-between items-center py-2 border-b last:border-0">
-      <div>{left}</div>
-      <span className={`font-mono font-semibold ${rightColor || ''}`}>{right}</span>
-    </div>
-  );
-}
-
-function Empty({ msg }) {
-  return <p className="text-gray-500 text-sm">{msg}</p>;
 }

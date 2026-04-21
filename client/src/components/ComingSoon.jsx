@@ -1,11 +1,23 @@
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card.jsx';
+import { Badge } from './ui/badge.jsx';
+
 export default function ComingSoon({ page, sprint }) {
   return (
-    <div className="max-w-xl mx-auto mt-12 p-8 bg-white rounded-lg shadow text-center">
-      <div className="text-sm uppercase tracking-wide text-indigo-600 mb-2">{page}</div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Coming soon</h1>
-      <p className="text-gray-500">
-        This page lands in <span className="font-medium text-gray-700">Sprint {sprint}</span>.
-      </p>
+    <div className="max-w-xl mx-auto mt-8">
+      <Card>
+        <CardHeader>
+          <Badge variant="muted" className="w-fit">{page}</Badge>
+          <CardTitle className="text-2xl mt-2">Coming soon</CardTitle>
+          <CardDescription>
+            Lands in Sprint {sprint}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            The data layer is already wired through Redux and Firestore — this page is just waiting for its UI.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

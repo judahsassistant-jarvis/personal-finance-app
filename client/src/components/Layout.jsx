@@ -1,6 +1,9 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import { LogOut } from 'lucide-react';
 import { signOut } from '../store/authSlice.js';
+import { Button } from './ui/button.jsx';
+import { cn } from '../lib/utils.js';
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
@@ -17,40 +20,47 @@ export default function Layout() {
   const user = useSelector((s) => s.auth.user);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-indigo-700 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <div className="font-bold text-xl">Personal Finance</div>
-            <div className="flex items-center space-x-1">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-indigo-900 text-white'
-                        : 'text-indigo-100 hover:bg-indigo-600'
-                    }`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-              <span className="pl-4 text-xs text-indigo-100">{user?.email}</span>
-              <button
+    <div className="min-h-screen bg-muted/30">
+      <header className="bg-background border-b border-border">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-8">
+              <span className="font-semibold text-sm tracking-tight">Personal Finance</span>
+              <nav className="flex items-center gap-1">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) =>
+                      cn(
+                        'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-secondary text-secondary-foreground'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
+                      )
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground hidden md:inline">{user?.email}</span>
+              <Button
                 onClick={() => dispatch(signOut())}
-                className="ml-2 px-3 py-1 text-xs rounded-md bg-indigo-800 hover:bg-indigo-900"
+                variant="ghost"
+                size="sm"
               >
+                <LogOut className="w-3.5 h-3.5" />
                 Sign out
-              </button>
+              </Button>
             </div>
           </div>
         </div>
-      </nav>
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      </header>
+      <main className="max-w-7xl mx-auto px-6 py-8">
         <Outlet />
       </main>
     </div>
