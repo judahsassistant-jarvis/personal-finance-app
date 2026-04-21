@@ -75,7 +75,7 @@ Add more (`Select`, `Dialog`, `Tabs`, `DropdownMenu`, `Tooltip`) as each sprint 
 <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
   <div>
     <div className="font-medium">Barclaycard Platinum</div>
-    <div className="text-xs text-muted-foreground">bt_card · priority</div>
+    <div className="text-xs text-muted-foreground">card · priority</div>
   </div>
   <span className="font-mono tabular-nums text-destructive">-£3,200.00</span>
 </div>
@@ -84,7 +84,7 @@ Add more (`Select`, `Dialog`, `Tabs`, `DropdownMenu`, `Tooltip`) as each sprint 
 ### Subtype badge
 
 ```
-<Badge variant="muted">bt_card</Badge>
+<Badge variant="muted">card</Badge>
 <Badge variant="warning">BT cliff · 4 months</Badge>
 <Badge variant="positive">liquid</Badge>
 ```

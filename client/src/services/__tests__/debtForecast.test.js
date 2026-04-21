@@ -198,7 +198,7 @@ describe('runForecast — card_like', () => {
 
   test('BT cliff detection records event when promo expires', () => {
     const debts = [{
-      id: 'bt1', subtype: DEBT_SUBTYPES.BT_CARD, name: 'BT Card',
+      id: 'bt1', subtype: DEBT_SUBTYPES.CARD, name: 'BT Card',
       balance_pennies: 280000, standard_apr: 0.249, min_percentage: 0.02, min_floor_pennies: 2500,
     }];
     const promoEnd = new Date('2026-07-01');

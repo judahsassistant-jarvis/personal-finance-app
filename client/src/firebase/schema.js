@@ -73,17 +73,18 @@ export const DEFAULT_RATES = Object.freeze({
 
 export const DEBT_SUBTYPES = Object.freeze({
   CARD: 'card',
-  BT_CARD: 'bt_card',
   BNPL: 'bnpl',
   PERSONAL_LOAN: 'personal_loan',
   OVERDRAFT: 'overdraft',
   STORE_CARD: 'store_card',
 });
 
-// Subtypes that use the bucketed interest model (multi-bucket card with per-bucket APR)
+// Subtypes that use the bucketed interest model (multi-bucket card with per-bucket APR).
+// Balance-transfer behaviour is modelled as a promo bucket on a regular card, not a
+// separate subtype — a "BT card" is just a card whose buckets happen to include one
+// with is_promo=true.
 export const CARD_LIKE_SUBTYPES = new Set([
   DEBT_SUBTYPES.CARD,
-  DEBT_SUBTYPES.BT_CARD,
   DEBT_SUBTYPES.STORE_CARD,
 ]);
 

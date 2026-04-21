@@ -32,7 +32,6 @@ import {
 // Subtypes that allow extra (above-minimum) payment allocation.
 const ACCEPTS_EXTRA = new Set([
   DEBT_SUBTYPES.CARD,
-  DEBT_SUBTYPES.BT_CARD,
   DEBT_SUBTYPES.STORE_CARD,
   DEBT_SUBTYPES.PERSONAL_LOAN,
   DEBT_SUBTYPES.OVERDRAFT,

@@ -104,7 +104,7 @@ async function seedDebts() {
   const debts = [
     {
       name: 'Barclaycard Platinum',
-      subtype: 'bt_card',
+      subtype: 'card',
       balance_pennies: 320000,
       standard_apr: 0.249,
       min_percentage: 0.025,
@@ -167,11 +167,11 @@ async function seedDebts() {
 }
 
 async function seedCardBuckets(debtIds) {
-  const btCardId = debtIds['Barclaycard Platinum'];
+  const barclayCardId = debtIds['Barclaycard Platinum'];
   const cardId = debtIds['Halifax Clarity'];
   const buckets = [
     {
-      debt_id: btCardId,
+      debt_id: barclayCardId,
       name: 'Balance Transfer (0% promo)',
       balance_pennies: 280000,
       apr: 0,
@@ -179,7 +179,7 @@ async function seedCardBuckets(debtIds) {
       promo_end: monthsFromNow(4), // cliff in ~4 months, good for testing alerts
     },
     {
-      debt_id: btCardId,
+      debt_id: barclayCardId,
       name: 'Purchases',
       balance_pennies: 40000,
       apr: 0.249,

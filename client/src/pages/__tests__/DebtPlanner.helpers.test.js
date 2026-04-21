@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
-import { computePromoInfo, computeWeightedApr } from '../DebtPlanner.jsx';
+import { computePromoInfo, computeWeightedApr } from '../debtPlannerHelpers.js';
 
 function daysFromNow(n) {
   const d = new Date();
