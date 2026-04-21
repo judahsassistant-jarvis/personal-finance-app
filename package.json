@@ -13,6 +13,8 @@
     "deploy:indexes": "firebase deploy --only firestore:indexes",
     "deploy:functions": "firebase deploy --only functions",
     "deploy:hosting": "firebase deploy --only hosting",
+    "seed": "cd scripts && npm run seed",
+    "test:rules": "cd tests/rules && npm test",
     "_phase1:dev:server": "cd server && npm run dev",
     "_phase1:test:unit": "cd server && npm run test:unit",
     "_phase1:test:api": "cd server && npm run test:api",

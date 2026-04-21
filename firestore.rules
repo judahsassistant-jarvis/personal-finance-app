@@ -11,8 +11,21 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function ownerOf(userIdField) {
-      return authed() && userIdField == request.auth.uid;
+    // Standard ownership check for create.
+    function ownedByMe() {
+      return authed() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // Update must keep user_id == auth.uid on both existing and incoming state.
+    function stillOwnedByMe() {
+      return authed()
+        && resource.data.user_id == request.auth.uid
+        && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // Read/delete need the existing user_id to match.
+    function isMine() {
+      return authed() && resource.data.user_id == request.auth.uid;
     }
 
     // --- User profile ---
@@ -22,54 +35,63 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // --- User-scoped collections ---
+    // --- User-scoped collections (standard pattern) ---
     match /accounts/{id} {
-      allow read, update, delete: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
     match /debts/{id} {
-      allow read, update, delete: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
     match /card_buckets/{id} {
-      allow read, update, delete: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
     match /transactions/{id} {
-      allow read, update, delete: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
     match /recurring_bills/{id} {
-      allow read, update, delete: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
     match /monthly_budgets/{id} {
-      allow read, update, delete: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
     match /debt_config/{id} {
-      allow read, update, delete: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
     match /forecast_snapshots/{id} {
-      allow read, delete: if ownerOf(resource.data.user_id);
-      allow create, update: if ownerOf(request.resource.data.user_id);
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
     }
 
+    // Audit log: append + read own only. No mutation, no deletion.
     match /audit_log/{id} {
-      allow read: if ownerOf(resource.data.user_id);
-      allow create: if ownerOf(request.resource.data.user_id);
+      allow read: if isMine();
+      allow create: if ownedByMe();
       allow update, delete: if false;
     }
 
-    // --- System docs (bank holidays cache, written by Cloud Function) ---
+    // --- System docs (bank holidays cache, written by Cloud Function via admin SDK) ---
     match /system/{docId} {
       allow read: if authed();
       allow write: if false;

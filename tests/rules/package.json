@@ -1,0 +1,14 @@
+{
+  "name": "pfa-rules-tests",
+  "private": true,
+  "type": "module",
+  "description": "Firestore security rules unit tests",
+  "scripts": {
+    "test": "cross-env FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test rules.test.js"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "cross-env": "^7.0.3",
+    "firebase": "^12.0.0"
+  }
+}
