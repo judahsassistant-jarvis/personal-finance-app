@@ -1,18 +1,20 @@
 /**
- * Pay cycle arithmetic — the core of the Snoop-style Dashboard.
+ * Pay cycle arithmetic.
  *
- * Given a user's pay cycle (day_of_month + cadence + shift_rule) and a bank
- * holiday cache, computes:
+ * There are two distinct concepts here:
  *
- *   - `getPayDay(year, month, cycle, holidayCache)` → Date for a specific month
- *   - `getNextPayDay(now, cycle, holidayCache)` → upcoming pay day
- *   - `getPrevPayDay(now, cycle, holidayCache)` → most recent past pay day
- *   - `getCurrentCycleBounds(now, cycle, holidayCache)` → {start, end} of current cycle
- *   - `daysRemainingInCycle(now, cycle, holidayCache)` → integer day count to next pay
+ *  1. **Nominal pay day** — the date the user's payroll is labelled for
+ *     (e.g. "28th of every month"). This defines the cycle boundaries:
+ *     cycle N starts on its nominal payday and ends the day before cycle N+1.
  *
- * 2a scope handles `monthly` cadence with shift_rule applied. Weekly /
- * bi-weekly / 4-weekly are stubs — the shape is the same, arithmetic is
- * simpler (no day-of-month logic), implement when Judah has such accounts.
+ *  2. **Actual pay day** — the date the money actually lands in the account,
+ *     after the shift_rule is applied (e.g. 28th Mar 2026 is a Saturday, so
+ *     with preceding_weekday it actually deposits on Friday 27th).
+ *
+ * Cycle bounds use NOMINAL paydays. "Days to payday" and deposit dates use
+ * ACTUAL (shifted) dates.
+ *
+ * Monthly cadence handled in 2a. Weekly / bi-weekly / 4-weekly throw.
  */
 
 import { precedingWorkingDay, followingWorkingDay } from './bankHolidays.js';
@@ -30,9 +32,47 @@ export const SHIFT_RULES = Object.freeze({
   FOLLOWING_WEEKDAY: 'following_weekday',
 });
 
-/** Apply the shift rule to a raw pay date. */
+// ---------------------------------------------------------------------------
+// Nominal (unshifted) — for cycle bounds
+// ---------------------------------------------------------------------------
+
+/** The nominal pay day in (year, month). Day-of-month > days-in-month clamps down. */
+export function getNominalPayDay(year, month, cycle) {
+  if (cycle.cadence !== CADENCES.MONTHLY) {
+    throw new Error(`getNominalPayDay only supports monthly cadence in 2a (got ${cycle.cadence})`);
+  }
+  const day = Math.min(cycle.day_of_month || 28, daysInMonth(year, month));
+  return new Date(year, month, day);
+}
+
+/** Most recent nominal pay day on or before `now`. */
+export function getPrevNominalPayDay(now, cycle) {
+  const today = startOfDay(now);
+  const candidate = getNominalPayDay(today.getFullYear(), today.getMonth(), cycle);
+  if (candidate <= today) return candidate;
+  const prev = today.getMonth() === 0
+    ? new Date(today.getFullYear() - 1, 11, 1)
+    : new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  return getNominalPayDay(prev.getFullYear(), prev.getMonth(), cycle);
+}
+
+/** Next nominal pay day strictly after `now`. */
+export function getNextNominalPayDay(now, cycle) {
+  const today = startOfDay(now);
+  const candidate = getNominalPayDay(today.getFullYear(), today.getMonth(), cycle);
+  if (candidate > today) return candidate;
+  const next = today.getMonth() === 11
+    ? new Date(today.getFullYear() + 1, 0, 1)
+    : new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return getNominalPayDay(next.getFullYear(), next.getMonth(), cycle);
+}
+
+// ---------------------------------------------------------------------------
+// Actual (shifted) — for deposit dates and days-to-payday
+// ---------------------------------------------------------------------------
+
 function applyShift(date, cycle, holidayCache) {
-  const division = cycle.division; // may be undefined — service uses default
+  const division = cycle.division;
   switch (cycle.shift_rule) {
     case SHIFT_RULES.PRECEDING_WEEKDAY:
       return precedingWorkingDay(date, cycle.honour_bank_holidays ? holidayCache : null, division);
@@ -44,17 +84,13 @@ function applyShift(date, cycle, holidayCache) {
   }
 }
 
-/** The pay date in a specific (year, month) — month is 0-indexed like Date. */
+/** Actual deposit date in (year, month) — nominal plus shift_rule. */
 export function getPayDay(year, month, cycle, holidayCache) {
-  if (cycle.cadence !== CADENCES.MONTHLY) {
-    throw new Error(`getPayDay only supports monthly cadence in 2a (got ${cycle.cadence})`);
-  }
-  const day = Math.min(cycle.day_of_month || 28, daysInMonth(year, month));
-  const raw = new Date(year, month, day);
-  return applyShift(raw, cycle, holidayCache);
+  const nominal = getNominalPayDay(year, month, cycle);
+  return applyShift(nominal, cycle, holidayCache);
 }
 
-/** Next pay day on or after `now`. */
+/** Next actual deposit date on or after `now`. */
 export function getNextPayDay(now, cycle, holidayCache) {
   const today = startOfDay(now);
   const thisMonth = getPayDay(today.getFullYear(), today.getMonth(), cycle, holidayCache);
@@ -65,7 +101,7 @@ export function getNextPayDay(now, cycle, holidayCache) {
   return getPayDay(next.getFullYear(), next.getMonth(), cycle, holidayCache);
 }
 
-/** Most recent pay day strictly before `now`. */
+/** Most recent actual deposit date strictly before `now`. */
 export function getPrevPayDay(now, cycle, holidayCache) {
   const today = startOfDay(now);
   const thisMonth = getPayDay(today.getFullYear(), today.getMonth(), cycle, holidayCache);
@@ -76,15 +112,50 @@ export function getPrevPayDay(now, cycle, holidayCache) {
   return getPayDay(prev.getFullYear(), prev.getMonth(), cycle, holidayCache);
 }
 
-/** {start, end} bracketing the current pay cycle. `start` inclusive, `end` exclusive. */
+// ---------------------------------------------------------------------------
+// Cycle + countdown
+// ---------------------------------------------------------------------------
+
+/**
+ * Current pay cycle as [start, end) using ACTUAL (shifted) pay dates.
+ *
+ * `start` is the most recent actual deposit date on or before `now` — so if
+ * today is the actual pay day, the new cycle has already begun.
+ * `end` is the actual deposit date of the following pay period.
+ *
+ * For the inclusive-end display ("cycle ends 27 Apr"), subtract a day from
+ * `end` at render time.
+ *
+ * Example: nominal 28th with preceding_weekday rule in April 2026:
+ *   On 15 Apr → cycle is [27 Mar Fri, 28 Apr Tue); displays as "27 Mar → 27 Apr".
+ *   On 28 Apr → cycle is [28 Apr Tue, 28 May Thu); displays as "28 Apr → 27 May".
+ */
 export function getCurrentCycleBounds(now, cycle, holidayCache) {
   const today = startOfDay(now);
-  const prev = getPrevPayDay(today, cycle, holidayCache);
-  const next = getNextPayDay(today, cycle, holidayCache);
-  return { start: prev, end: next };
+
+  // Start: most recent actual deposit ≤ today.
+  const thisActual = getPayDay(today.getFullYear(), today.getMonth(), cycle, holidayCache);
+  const start = thisActual <= today
+    ? thisActual
+    : getPayDay(
+      today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear(),
+      today.getMonth() === 0 ? 11 : today.getMonth() - 1,
+      cycle,
+      holidayCache,
+    );
+
+  // End: actual deposit of the month after `start`.
+  const end = getPayDay(
+    start.getMonth() === 11 ? start.getFullYear() + 1 : start.getFullYear(),
+    start.getMonth() === 11 ? 0 : start.getMonth() + 1,
+    cycle,
+    holidayCache,
+  );
+
+  return { start, end };
 }
 
-/** Integer day count from `now` to the next pay day. 0 means today is pay day. */
+/** Integer days from `now` to the next ACTUAL deposit date. 0 means today. */
 export function daysRemainingInCycle(now, cycle, holidayCache) {
   const today = startOfDay(now);
   const next = getNextPayDay(today, cycle, holidayCache);

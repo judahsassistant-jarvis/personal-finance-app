@@ -288,6 +288,55 @@ async function seedTransactions(accountIds) {
   }
 }
 
+async function seedBankHolidays() {
+  await db.doc('system/bank_holidays').set({
+    'england-and-wales': {
+      division: 'england-and-wales',
+      events: [
+        { date: '2026-01-01', title: 'New Year’s Day' },
+        { date: '2026-04-03', title: 'Good Friday' },
+        { date: '2026-04-06', title: 'Easter Monday' },
+        { date: '2026-05-04', title: 'Early May bank holiday' },
+        { date: '2026-05-25', title: 'Spring bank holiday' },
+        { date: '2026-08-31', title: 'Summer bank holiday' },
+        { date: '2026-12-25', title: 'Christmas Day' },
+        { date: '2026-12-28', title: 'Boxing Day (substitute)' },
+      ],
+    },
+    'scotland': {
+      division: 'scotland',
+      events: [
+        { date: '2026-01-01', title: 'New Year’s Day' },
+        { date: '2026-01-02', title: '2nd January' },
+        { date: '2026-04-03', title: 'Good Friday' },
+        { date: '2026-05-04', title: 'Early May bank holiday' },
+        { date: '2026-05-25', title: 'Spring bank holiday' },
+        { date: '2026-08-03', title: 'Summer bank holiday' },
+        { date: '2026-11-30', title: 'St Andrew’s Day' },
+        { date: '2026-12-25', title: 'Christmas Day' },
+        { date: '2026-12-28', title: 'Boxing Day (substitute)' },
+      ],
+    },
+    'northern-ireland': {
+      division: 'northern-ireland',
+      events: [
+        { date: '2026-01-01', title: 'New Year’s Day' },
+        { date: '2026-03-17', title: 'St Patrick’s Day' },
+        { date: '2026-04-03', title: 'Good Friday' },
+        { date: '2026-04-06', title: 'Easter Monday' },
+        { date: '2026-05-04', title: 'Early May bank holiday' },
+        { date: '2026-05-25', title: 'Spring bank holiday' },
+        { date: '2026-07-13', title: 'Battle of the Boyne (substitute)' },
+        { date: '2026-08-31', title: 'Summer bank holiday' },
+        { date: '2026-12-25', title: 'Christmas Day' },
+        { date: '2026-12-28', title: 'Boxing Day (substitute)' },
+      ],
+    },
+    fetched_at: admin.firestore.FieldValue.serverTimestamp(),
+    source: 'seed',
+  });
+}
+
 async function main() {
   console.log(`Seeding emulator at ${process.env.FIRESTORE_EMULATOR_HOST} ...`);
   await ensureUser();
@@ -300,6 +349,7 @@ async function main() {
   await seedRecurringBills();
   await seedBudgets();
   await seedTransactions(accountIds);
+  await seedBankHolidays();
   console.log('Seed complete.');
   process.exit(0);
 }

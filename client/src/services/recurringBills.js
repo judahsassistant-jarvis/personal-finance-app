@@ -112,6 +112,32 @@ export function inferRecurringBills({
 }
 
 /**
+ * Compute the date a bill is expected to hit in the current cycle.
+ * Returns a Date at midnight local time. Returns null if the bill's
+ * day-of-month doesn't fall within the cycle (shouldn't happen for cycles
+ * shorter than ~a month).
+ */
+export function billDateInCycle(bill, cycleStart, cycleEnd) {
+  const day = Number(bill.expected_day_of_month || 0);
+  if (!day) return null;
+  // Try start month first, then end month.
+  const candidates = [
+    dayInMonth(cycleStart.getFullYear(), cycleStart.getMonth(), day),
+    dayInMonth(cycleEnd.getFullYear(), cycleEnd.getMonth(), day),
+  ];
+  for (const d of candidates) {
+    if (d >= cycleStart && d < cycleEnd) return d;
+  }
+  return null;
+}
+
+function dayInMonth(year, month, day) {
+  const last = new Date(year, month + 1, 0).getDate();
+  const clamped = Math.min(day, last);
+  return new Date(year, month, clamped);
+}
+
+/**
  * For a given bill and the current cycle bounds, decide whether a matching
  * transaction has landed (the bill is "paid") or is still "upcoming".
  *
@@ -139,11 +165,8 @@ export function billStatusInCycle({ bill, transactions, cycleStart, cycleEnd, no
   });
   if (match) return 'paid';
 
-  // Compute expected date within this cycle.
-  const expectedThisCycle = new Date(cycleStart);
-  expectedThisCycle.setDate(bill.expected_day_of_month);
-  if (expectedThisCycle < cycleStart) expectedThisCycle.setMonth(expectedThisCycle.getMonth() + 1);
-
+  const expectedThisCycle = billDateInCycle(bill, cycleStart, cycleEnd);
+  if (!expectedThisCycle) return 'upcoming';
   return now >= expectedThisCycle ? 'missed' : 'upcoming';
 }
 

@@ -6,6 +6,8 @@ import cardBucketsReducer from './cardBucketsSlice.js';
 import transactionsReducer from './transactionsSlice.js';
 import budgetsReducer from './budgetsSlice.js';
 import debtConfigReducer from './debtConfigSlice.js';
+import recurringBillsReducer from './recurringBillsSlice.js';
+import systemReducer from './systemSlice.js';
 
 export const store = configureStore({
   reducer: {
@@ -16,5 +18,7 @@ export const store = configureStore({
     transactions: transactionsReducer,
     budgets: budgetsReducer,
     debtConfig: debtConfigReducer,
+    recurringBills: recurringBillsReducer,
+    system: systemReducer,
   },
 });
