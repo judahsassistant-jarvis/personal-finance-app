@@ -1,0 +1,365 @@
+/**
+ * CSV parser — browser-safe.
+ *
+ * Phase 1 parsed files from disk and persisted via Sequelize. In Phase 2 the
+ * browser reads the File itself (FileReader or File.text()), passes the text
+ * here, and the caller (Redux thunk) batch-writes to Firestore. No IO here.
+ *
+ * Monetary values: parses input strings as pounds (what banks export), then
+ * converts to integer pennies for storage. The Phase 1 pounds-as-decimals
+ * output shape is gone.
+ */
+
+import Papa from 'papaparse';
+import { poundsToPennies } from '../firebase/schema.js';
+
+// ---------------------------------------------------------------------------
+// Merchant normalisation
+// ---------------------------------------------------------------------------
+
+const MERCHANT_MAP = {
+  TESCO: 'Tesco',
+  'TESCO STORES': 'Tesco',
+  'ESCO STORES': 'Tesco',
+  SAINSBURY: 'Sainsburys',
+  'EDF ENERGY': 'EDF Energy',
+  'FUSE ENERGY': 'Fuse Energy',
+  'OCTOPUS ENERGY': 'Octopus Energy',
+  NETFLIX: 'Netflix',
+  'DISNEY+': 'Disney+',
+  SPOTIFY: 'Spotify',
+  'BT GROUP': 'BT',
+  VIRGIN: 'Virgin',
+  'VIRGIN MONEY': 'Virgin Money',
+  AMEX: 'Amex',
+  'UBER EATS': 'Uber Eats',
+  'UBER *EATS': 'Uber Eats',
+  'UBER *ONE': 'Uber One',
+  'UBER *TRIP': 'Uber',
+  UBER: 'Uber',
+  APPLE: 'Apple',
+  MICROSOFT: 'Microsoft',
+  GOOGLE: 'Google',
+  'GOOGLE PLAY': 'Google Play',
+  'GOOGLE YOUTUBE': 'YouTube',
+  EXPERIAN: 'Experian',
+  COINBASE: 'Coinbase',
+  'SKY DIGITAL': 'Sky',
+  'DGI SKY PROTECT': 'Sky Protect',
+  O2: 'O2',
+  MCDONALDS: 'McDonalds',
+  'BURGER KING': 'Burger King',
+  'LORDS PHARMACY': 'Lords Pharmacy',
+  PAYPAL: 'PayPal',
+  'OPENAI *CHATGPT': 'OpenAI ChatGPT',
+  'UTILITY WAREHOUSE': 'Utility Warehouse',
+  HALFORDS: 'Halfords',
+  ZABLE: 'Zable',
+  'TK MAXX': 'TK Maxx',
+  'T K MAXX': 'TK Maxx',
+  SAMSUNGFINANCEGLOW: 'Samsung Finance',
+  SUPERDRUG: 'Superdrug',
+  'COSTA COFFEE': 'Costa Coffee',
+  DROPBOX: 'Dropbox',
+  BOOTS: 'Boots',
+  SHELL: 'Shell',
+  NCP: 'NCP Parking',
+  ZOPA: 'Zopa',
+  'ESURE MOTOR': 'Esure Motor',
+  DVLA: 'DVLA',
+  CURRYS: 'Currys',
+};
+
+export function normalizeMerchant(rawMerchant) {
+  if (!rawMerchant) return 'Unknown';
+  const cleaned = rawMerchant
+    .replace(/[#]\d{4,}/g, '')
+    .replace(/\s+\d{6,}/g, '')
+    .replace(/\s+(GB|UK|US|IE|GBR|USA)\s*\d*/gi, '')
+    .replace(/\s+\d{4}$/, '')
+    .trim();
+
+  const upper = cleaned.toUpperCase();
+  const sortedKeys = Object.keys(MERCHANT_MAP).sort((a, b) => b.length - a.length);
+  for (const key of sortedKeys) {
+    if (upper.includes(key.toUpperCase())) return MERCHANT_MAP[key];
+  }
+  return cleaned
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+    .substring(0, 255);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-categorisation
+// ---------------------------------------------------------------------------
+
+const CATEGORY_RULES = {
+  Health: ['Lords Pharmacy', 'Boots Pharmacy', 'NHS'],
+  Food: ['Uber Eats', 'Deliveroo', 'Just Eat', 'McDonalds', 'Burger King', 'KFC', 'Nandos', 'Costa Coffee', 'Starbucks', 'Greggs', 'Subway'],
+  Bills: ['EDF Energy', 'Fuse Energy', 'Octopus Energy', 'BT', 'Virgin', 'Utility Warehouse', 'Thames Water', 'Council Tax', 'TV Licence', 'Sky', 'Sky Protect'],
+  Subscriptions: ['Netflix', 'Disney+', 'Spotify', 'Amazon Prime', 'YouTube', 'Apple', 'Dropbox', 'OpenAI ChatGPT', 'Uber One', 'Experian', 'Google Play'],
+  Transport: ['Uber', 'Shell', 'BP', 'Esso', 'NCP Parking', 'TfL', 'DVLA', 'Esure Motor', 'RAC'],
+  Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
+  Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal'],
+};
+
+export function autoCategorize(merchantName) {
+  if (!merchantName) return 'Other';
+  const upper = merchantName.toUpperCase();
+  const allMappings = [];
+  for (const [category, merchants] of Object.entries(CATEGORY_RULES)) {
+    for (const m of merchants) allMappings.push({ merchant: m, category });
+  }
+  allMappings.sort((a, b) => b.merchant.length - a.merchant.length);
+  for (const { merchant, category } of allMappings) {
+    if (upper.includes(merchant.toUpperCase())) return category;
+  }
+  return 'Other';
+}
+
+const KNOWN_RECURRING = [
+  'EDF Energy', 'Fuse Energy', 'Octopus Energy', 'BT', 'Virgin', 'Sky', 'Sky Protect',
+  'Netflix', 'Disney+', 'Spotify', 'Utility Warehouse', 'O2', 'Uber One', 'Experian',
+  'OpenAI ChatGPT', 'Dropbox', 'Apple', 'Samsung Finance', 'Zopa', 'Esure Motor', 'Council Tax',
+];
+
+export function isKnownRecurring(merchantName) {
+  if (!merchantName) return false;
+  const upper = merchantName.toUpperCase();
+  return KNOWN_RECURRING.some((m) => upper.includes(m.toUpperCase()));
+}
+
+/**
+ * Detect recurring bills by grouping transactions with same merchant+amount (2+ occurrences).
+ * Mutates transactions in place: sets is_recurring=true and promotes Other → Bills.
+ */
+export function detectRecurringBills(transactions) {
+  const groups = {};
+  for (const t of transactions) {
+    const key = `${(t.merchant || '').toLowerCase()}|${t.amount_pennies}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(t);
+  }
+  const recurring = [];
+  for (const txns of Object.values(groups)) {
+    if (txns.length >= 2) {
+      for (const t of txns) {
+        t.is_recurring = true;
+        if (t.category === 'Other') t.category = 'Bills';
+      }
+      recurring.push({ merchant: txns[0].merchant, amount_pennies: txns[0].amount_pennies, count: txns.length });
+    }
+  }
+  return recurring;
+}
+
+// ---------------------------------------------------------------------------
+// Date / amount parsing
+// ---------------------------------------------------------------------------
+
+export function parseDate(dateStr) {
+  if (!dateStr) return null;
+  const s = String(dateStr).trim();
+
+  const ukMatch = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (ukMatch) {
+    return `${ukMatch[3]}-${ukMatch[2].padStart(2, '0')}-${ukMatch[1].padStart(2, '0')}`;
+  }
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+  const monMatch = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/);
+  if (monMatch) {
+    const months = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    };
+    const mon = months[monMatch[2].toLowerCase()];
+    const year = parseInt(monMatch[3], 10) > 50 ? `19${monMatch[3]}` : `20${monMatch[3]}`;
+    return `${year}-${mon}-${monMatch[1].padStart(2, '0')}`;
+  }
+  return null;
+}
+
+/** Parse currency string to pounds (float). Converting to pennies is the caller's job. */
+export function parseAmount(amountStr) {
+  if (amountStr === undefined || amountStr === null || amountStr === '') return 0;
+  const cleaned = String(amountStr)
+    .replace(/[££$€,\s]/g, '')
+    .replace(/[()]/g, '')
+    .trim();
+  if (cleaned === '' || cleaned === '-') return 0;
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+}
+
+// ---------------------------------------------------------------------------
+// Format detection + row parsing
+// ---------------------------------------------------------------------------
+
+export function detectFormat(headers) {
+  const lower = headers.map((h) => h.toLowerCase().trim());
+  if (lower.includes('transaction type') && lower.includes('paid out')) return 'nationwide';
+  if (lower.includes('started date') && lower.includes('completed date') && lower.includes('state')) return 'revolut';
+  if (lower.includes('billing amount') && lower.includes('debit or credit')) return 'virgin_money';
+  if (lower.includes('debit') && lower.includes('credit')) return 'bank_with_balance';
+  return 'generic';
+}
+
+function parseRow(row, format, headers) {
+  const get = (name) => {
+    const idx = headers.findIndex((h) => h.toLowerCase().trim() === name.toLowerCase());
+    return idx >= 0 ? (row[idx] || '').trim() : '';
+  };
+
+  switch (format) {
+    case 'nationwide': {
+      const paidOut = parseAmount(get('Paid out'));
+      const paidIn = parseAmount(get('Paid in'));
+      const amount = paidIn > 0 ? paidIn : -paidOut;
+      return {
+        date: parseDate(get('Date')),
+        merchant: normalizeMerchant(get('Description')),
+        description: get('Description'),
+        amount,
+      };
+    }
+    case 'revolut': {
+      const state = get('State');
+      if (state && state.toUpperCase() === 'REVERTED') return null;
+      return {
+        date: parseDate(get('Completed Date') || get('Started Date')),
+        merchant: normalizeMerchant(get('Description')),
+        description: `${get('Type')}: ${get('Description')}`,
+        amount: parseAmount(get('Amount')),
+      };
+    }
+    case 'virgin_money': {
+      const direction = get('Debit or Credit');
+      let amount = parseAmount(get('Billing Amount'));
+      if (direction === 'DBIT') amount = -Math.abs(amount);
+      if (direction === 'CRDT') amount = Math.abs(amount);
+      return {
+        date: parseDate(get('Transaction Date')),
+        merchant: normalizeMerchant(get('Merchant')),
+        description: `${get('Merchant')} - ${get('Merchant City') || ''}`.trim(),
+        amount,
+      };
+    }
+    default: {
+      const dateVal = get('Date') || get('Transaction Date');
+      const desc = get('Description') || get('Merchant') || '';
+      const amountVal = get('Amount');
+      return {
+        date: parseDate(dateVal),
+        merchant: normalizeMerchant(desc),
+        description: desc,
+        amount: parseAmount(amountVal),
+      };
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public entry
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a CSV file's text content.
+ *
+ * @param {string} fileContent - full CSV text
+ * @param {string} accountId - Firestore account id the transactions belong to
+ * @param {Object} [opts]
+ * @param {string} [opts.importBatchId] - tag all transactions with this batch id
+ * @returns {{format: string, batch_id: string, transactions: Object[], recurring_bills: Object[], total_debit_pennies: number, total_credit_pennies: number, count: number}}
+ */
+export function parseCSV(fileContent, accountId, { importBatchId } = {}) {
+  if (typeof fileContent !== 'string') {
+    throw new Error('parseCSV expects text content, not a File object. Use file.text() first.');
+  }
+
+  // Strip UTF-8 BOM
+  let content = fileContent.charCodeAt(0) === 0xfeff ? fileContent.slice(1) : fileContent;
+
+  // Strip Nationwide's pre-header metadata rows.
+  const lines = content.split('\n');
+  let startIdx = 0;
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    const line = lines[i].trim();
+    if (
+      line.startsWith('Account Name:') ||
+      line.startsWith('Account Balance:') ||
+      line.startsWith('Available Balance:') ||
+      line === '' ||
+      line === ',,,,,'
+    ) {
+      startIdx = i + 1;
+    } else {
+      break;
+    }
+  }
+  content = lines.slice(startIdx).join('\n');
+
+  const parsed = Papa.parse(content, {
+    header: false,
+    skipEmptyLines: true,
+    dynamicTyping: false,
+  });
+
+  if (parsed.errors.length > 0 && parsed.data.length === 0) {
+    throw new Error(`CSV parse error: ${parsed.errors[0].message}`);
+  }
+
+  const headers = parsed.data[0];
+  const format = detectFormat(headers);
+  const batchId = importBatchId || cryptoRandomId();
+  const transactions = [];
+
+  for (let i = 1; i < parsed.data.length; i++) {
+    const row = parsed.data[i];
+    if (row.every((cell) => !cell || cell.trim() === '')) continue;
+    const result = parseRow(row, format, headers);
+    if (!result || !result.date) continue;
+
+    const autoCategory = autoCategorize(result.merchant);
+    const autoRecurring = isKnownRecurring(result.merchant);
+    const amountPennies = poundsToPennies(result.amount);
+
+    transactions.push({
+      account_id: accountId,
+      date: result.date, // ISO string; caller converts to Firestore Timestamp
+      merchant: result.merchant,
+      description: result.description,
+      amount_pennies: amountPennies,
+      category: autoCategory,
+      suggested_category: autoCategory,
+      is_recurring: autoRecurring,
+      imported_from: format === 'generic' ? 'csv' : format,
+      import_batch_id: batchId,
+    });
+  }
+
+  const recurringBills = detectRecurringBills(transactions);
+
+  return {
+    format,
+    batch_id: batchId,
+    count: transactions.length,
+    total_debit_pennies: transactions
+      .filter((t) => t.amount_pennies < 0)
+      .reduce((s, t) => s + Math.abs(t.amount_pennies), 0),
+    total_credit_pennies: transactions
+      .filter((t) => t.amount_pennies > 0)
+      .reduce((s, t) => s + t.amount_pennies, 0),
+    recurring_bills: recurringBills,
+    transactions,
+  };
+}
+
+function cryptoRandomId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
