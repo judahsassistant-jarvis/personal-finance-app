@@ -1,12 +1,20 @@
 import { configureStore } from '@reduxjs/toolkit';
-import accountsReducer from './accountsSlice';
-import cardsReducer from './cardsSlice';
-import transactionsReducer from './transactionsSlice';
+import authReducer from './authSlice.js';
+import accountsReducer from './accountsSlice.js';
+import debtsReducer from './debtsSlice.js';
+import cardBucketsReducer from './cardBucketsSlice.js';
+import transactionsReducer from './transactionsSlice.js';
+import budgetsReducer from './budgetsSlice.js';
+import debtConfigReducer from './debtConfigSlice.js';
 
 export const store = configureStore({
   reducer: {
+    auth: authReducer,
     accounts: accountsReducer,
-    cards: cardsReducer,
+    debts: debtsReducer,
+    cardBuckets: cardBucketsReducer,
     transactions: transactionsReducer,
+    budgets: budgetsReducer,
+    debtConfig: debtConfigReducer,
   },
 });

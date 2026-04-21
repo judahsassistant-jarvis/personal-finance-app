@@ -1,58 +1,48 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { getAccounts, createAccount, updateAccount, deleteAccount } from '../api/client';
+import { COLLECTIONS, newAccountDoc } from '../firebase/schema.js';
+import { fetchAll, createDoc, updateDocById, deleteDocById } from '../firebase/helpers.js';
 
-export const fetchAccounts = createAsyncThunk('accounts/fetch', async () => {
-  const { data } = await getAccounts();
-  return data;
+const COLLECTION = COLLECTIONS.ACCOUNTS;
+
+export const fetchAccounts = createAsyncThunk('accounts/fetch', async (_, { getState }) => {
+  const uid = getState().auth.user?.uid;
+  return fetchAll(COLLECTION, uid, { orderByField: 'created', direction: 'asc' });
 });
 
-export const addAccount = createAsyncThunk('accounts/add', async (accountData) => {
-  const { data } = await createAccount(accountData);
-  return data;
+export const addAccount = createAsyncThunk('accounts/add', async (input, { getState }) => {
+  const uid = getState().auth.user.uid;
+  const data = newAccountDoc({ user_id: uid, ...input });
+  return createDoc(COLLECTION, uid, data);
 });
 
 export const editAccount = createAsyncThunk('accounts/edit', async ({ id, ...updates }) => {
-  const { data } = await updateAccount(id, updates);
-  return data;
+  return updateDocById(COLLECTION, id, updates);
 });
 
 export const removeAccount = createAsyncThunk('accounts/remove', async (id) => {
-  await deleteAccount(id);
-  return id;
+  return deleteDocById(COLLECTION, id);
 });
 
-const accountsSlice = createSlice({
+const slice = createSlice({
   name: 'accounts',
   initialState: { items: [], loading: false, error: null },
-  reducers: {},
-  extraReducers: (builder) => {
-    builder
-      .addCase(fetchAccounts.pending, (state) => { state.loading = true; })
-      .addCase(fetchAccounts.fulfilled, (state, action) => {
-        state.loading = false;
-        state.items = action.payload;
-      })
-      .addCase(fetchAccounts.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message;
-      })
-      .addCase(addAccount.fulfilled, (state, action) => {
-        state.items.push(action.payload);
-      })
-      .addCase(editAccount.fulfilled, (state, action) => {
-        const idx = state.items.findIndex((a) => a.id === action.payload.id);
-        if (idx >= 0) state.items[idx] = action.payload;
-      })
-      .addCase(removeAccount.fulfilled, (state, action) => {
-        state.items = state.items.filter((a) => a.id !== action.payload);
-      })
-      .addCase(addAccount.rejected, (state, action) => {
-        state.error = action.error.message;
-      })
-      .addCase(editAccount.rejected, (state, action) => {
-        state.error = action.error.message;
-      });
+  reducers: {
+    reset: (state) => { state.items = []; state.error = null; },
+  },
+  extraReducers: (b) => {
+    b.addCase(fetchAccounts.pending, (s) => { s.loading = true; s.error = null; });
+    b.addCase(fetchAccounts.fulfilled, (s, a) => { s.loading = false; s.items = a.payload; });
+    b.addCase(fetchAccounts.rejected, (s, a) => { s.loading = false; s.error = a.error.message; });
+    b.addCase(addAccount.fulfilled, (s, a) => { s.items.push(a.payload); });
+    b.addCase(editAccount.fulfilled, (s, a) => {
+      const i = s.items.findIndex((x) => x.id === a.payload.id);
+      if (i >= 0) s.items[i] = { ...s.items[i], ...a.payload };
+    });
+    b.addCase(removeAccount.fulfilled, (s, a) => {
+      s.items = s.items.filter((x) => x.id !== a.payload);
+    });
   },
 });
 
-export default accountsSlice.reducer;
+export const { reset: resetAccounts } = slice.actions;
+export default slice.reducer;
