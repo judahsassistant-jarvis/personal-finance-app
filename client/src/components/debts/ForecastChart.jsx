@@ -299,7 +299,8 @@ function ActualChart({ rows, seriesSpecs }) {
               dataKey={`${s.key}_actual`}
               stroke={s.color}
               strokeWidth={2}
-              dot={{ r: 3, fill: s.color, stroke: s.color }}
+              dot={false}
+              legendType="plainline"
               connectNulls
               isAnimationActive={false}
             />
