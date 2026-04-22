@@ -4,6 +4,7 @@ import {
   summarisePlan,
   suggestBudgetPennies,
   autoSuggestedBudgetFromDiscretionary,
+  pickEffectiveBudget,
   budgetHelperText,
   formatMonthsDuration,
   formatPayoffMonth,
@@ -93,6 +94,44 @@ describe('formatPayoffMonth', () => {
     expect(formatPayoffMonth('')).toBe('');
     expect(formatPayoffMonth(null)).toBe('');
     expect(formatPayoffMonth('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('pickEffectiveBudget', () => {
+  const base = { totalMinPennies: 15000, savedBudget: null };
+
+  it('uses auto-suggested when enabled and discretionary available', () => {
+    // 15000 mins + 20000 discretionary = 35000
+    expect(pickEffectiveBudget({
+      ...base, autoSuggestEnabled: true, discretionaryPennies: 20000,
+    })).toBe(35000);
+  });
+
+  it('falls back to saved budget when auto-suggest is off', () => {
+    expect(pickEffectiveBudget({
+      ...base, autoSuggestEnabled: false, discretionaryPennies: 20000, savedBudget: 40000,
+    })).toBe(40000);
+  });
+
+  it('falls back to saved budget when auto-suggest is on but discretionary is unavailable', () => {
+    expect(pickEffectiveBudget({
+      ...base, autoSuggestEnabled: true, discretionaryPennies: null, savedBudget: 40000,
+    })).toBe(40000);
+  });
+
+  it('falls back to heuristic when no saved budget and no discretionary', () => {
+    // suggestBudgetPennies(15000) = 15000 * 1.5 = 22500 → Math.round(4.5) = 5,
+    // so nearest £50 rounds up to £250 = 25000 pennies.
+    expect(pickEffectiveBudget({
+      ...base, autoSuggestEnabled: true, discretionaryPennies: null, savedBudget: null,
+    })).toBe(25000);
+  });
+
+  it('auto-suggest takes priority over saved budget', () => {
+    // auto is 35000, saved is 99999 — auto wins
+    expect(pickEffectiveBudget({
+      ...base, autoSuggestEnabled: true, discretionaryPennies: 20000, savedBudget: 99999,
+    })).toBe(35000);
   });
 });
 

@@ -46,6 +46,30 @@ export function autoSuggestedBudgetFromDiscretionary(discretionaryPennies, total
 }
 
 /**
+ * Pick the effective monthly budget from the three possible sources:
+ * 1. Auto-suggested from discretionary, when the toggle is on and discretionary
+ *    is available.
+ * 2. The user's saved budget, when one exists.
+ * 3. The rule-of-thumb fallback (1.5× minimums, rounded to £50).
+ *
+ * Shared across StrategyComparison, ForecastChart, and MilestonesCard so the
+ * three views agree on "what budget am I projecting under?" at all times.
+ */
+export function pickEffectiveBudget({
+  autoSuggestEnabled,
+  discretionaryPennies,
+  totalMinPennies,
+  savedBudget,
+}) {
+  if (autoSuggestEnabled) {
+    const auto = autoSuggestedBudgetFromDiscretionary(discretionaryPennies, totalMinPennies);
+    if (auto != null) return auto;
+  }
+  if (savedBudget != null) return savedBudget;
+  return suggestBudgetPennies(totalMinPennies);
+}
+
+/**
  * Human-readable helper text under the Monthly Budget input, explaining where
  * the current value came from (auto-suggested vs custom vs fallback) and why.
  */

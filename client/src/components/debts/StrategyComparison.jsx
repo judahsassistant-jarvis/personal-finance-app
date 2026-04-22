@@ -15,8 +15,7 @@ import { Badge } from '../ui/badge.jsx';
 import { Input } from '../ui/input.jsx';
 import {
   summarisePlan,
-  suggestBudgetPennies,
-  autoSuggestedBudgetFromDiscretionary,
+  pickEffectiveBudget,
   budgetHelperText,
   formatMonthsDuration,
   formatPayoffMonth,
@@ -82,23 +81,13 @@ export default function StrategyComparison({ debts, buckets }) {
   }, [profile, accounts, debts, bills, transactions, bankHolidays]);
 
   const discretionaryPennies = discretionaryCalc?.discretionary_pennies ?? null;
-  const autoSuggestedBudget = useMemo(
-    () => autoSuggestedBudgetFromDiscretionary(discretionaryPennies, totalMinPennies),
-    [discretionaryPennies, totalMinPennies],
-  );
-
   const autoSuggestEnabled = config?.auto_suggest_budget ?? true;
   const savedBudget = config?.monthly_budget_pennies ?? null;
-  const fallbackHeuristic = useMemo(
-    () => suggestBudgetPennies(totalMinPennies),
-    [totalMinPennies],
-  );
 
-  const effectiveBudget = useMemo(() => {
-    if (autoSuggestEnabled && autoSuggestedBudget != null) return autoSuggestedBudget;
-    if (savedBudget != null) return savedBudget;
-    return fallbackHeuristic;
-  }, [autoSuggestEnabled, autoSuggestedBudget, savedBudget, fallbackHeuristic]);
+  const effectiveBudget = useMemo(
+    () => pickEffectiveBudget({ autoSuggestEnabled, discretionaryPennies, totalMinPennies, savedBudget }),
+    [autoSuggestEnabled, discretionaryPennies, totalMinPennies, savedBudget],
+  );
 
   const [draftBudget, setDraftBudget] = useState(() => penniesToPounds(effectiveBudget));
   useEffect(() => {

@@ -14,10 +14,7 @@ import { fetchRecurringBills } from '../../store/recurringBillsSlice.js';
 import { fetchBankHolidays } from '../../store/systemSlice.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card.jsx';
 import { Button } from '../ui/button.jsx';
-import {
-  suggestBudgetPennies,
-  autoSuggestedBudgetFromDiscretionary,
-} from './strategyComparisonHelpers.js';
+import { pickEffectiveBudget } from './strategyComparisonHelpers.js';
 import {
   toProjectedChartData,
   projectedSeries,
@@ -77,16 +74,12 @@ export default function ForecastChart({ debts, buckets }) {
   }, [profile, accounts, debts, bills, transactions, bankHolidays]);
   const discretionaryPennies = discretionaryCalc?.discretionary_pennies ?? null;
 
-  const autoSuggestEnabled = config?.auto_suggest_budget ?? true;
-  const savedBudget = config?.monthly_budget_pennies ?? null;
-  const effectiveBudget = useMemo(() => {
-    if (autoSuggestEnabled) {
-      const auto = autoSuggestedBudgetFromDiscretionary(discretionaryPennies, totalMinPennies);
-      if (auto != null) return auto;
-    }
-    if (savedBudget != null) return savedBudget;
-    return suggestBudgetPennies(totalMinPennies);
-  }, [autoSuggestEnabled, discretionaryPennies, totalMinPennies, savedBudget]);
+  const effectiveBudget = useMemo(() => pickEffectiveBudget({
+    autoSuggestEnabled: config?.auto_suggest_budget ?? true,
+    discretionaryPennies,
+    totalMinPennies,
+    savedBudget: config?.monthly_budget_pennies ?? null,
+  }), [config, discretionaryPennies, totalMinPennies]);
 
   const strategy = config?.strategy ?? STRATEGIES.AVALANCHE;
 

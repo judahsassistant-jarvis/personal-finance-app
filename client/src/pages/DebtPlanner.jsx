@@ -27,6 +27,7 @@ import StrategyComparison from '../components/debts/StrategyComparison.jsx';
 import UtilisationBar from '../components/debts/UtilisationBar.jsx';
 import PayoffProgressBar from '../components/debts/PayoffProgressBar.jsx';
 import ForecastChart from '../components/debts/ForecastChart.jsx';
+import MilestonesCard from '../components/debts/MilestonesCard.jsx';
 
 // Single source of truth for subtype → icon. Used for both the group
 // header (via GROUPS below) and the per-row visual badge in DebtRow.
@@ -161,6 +162,7 @@ export default function DebtPlanner() {
           <StrategyCard rows={allRows} />
           <StrategyComparison debts={debts} buckets={buckets} />
           <ForecastChart debts={debts} buckets={buckets} />
+          <MilestonesCard debts={debts} buckets={buckets} />
         </>
       )}
 
