@@ -12,7 +12,7 @@ import { fetchBankHolidays } from '../../store/systemSlice.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card.jsx';
 import { Button } from '../ui/button.jsx';
 import { Input } from '../ui/input.jsx';
-import { pickEffectiveBudget, formatMonthsDuration, formatPayoffMonth } from './strategyComparisonHelpers.js';
+import { pickEffectiveBudget, getForecastStartMonth, formatMonthsDuration, formatPayoffMonth } from './strategyComparisonHelpers.js';
 import {
   computeBonusPaymentImpact,
   dateInputToMonthIndex,
@@ -42,11 +42,10 @@ export default function BonusPaymentCard({ debts, buckets }) {
     dispatch(fetchBankHolidays());
   }, [dispatch]);
 
-  const startMonth = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d;
-  }, []);
+  const startMonth = useMemo(
+    () => getForecastStartMonth({ payCycle: profile?.pay_cycle, holidayCache: bankHolidays }),
+    [profile, bankHolidays],
+  );
 
   const totalMinPennies = useMemo(() => {
     const minOnly = runForecast({ debts, buckets, startMonth, months: HORIZON_MONTHS, minOnly: true });

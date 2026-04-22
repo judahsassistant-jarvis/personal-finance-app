@@ -14,7 +14,7 @@ import { fetchRecurringBills } from '../../store/recurringBillsSlice.js';
 import { fetchBankHolidays } from '../../store/systemSlice.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card.jsx';
 import { Button } from '../ui/button.jsx';
-import { pickEffectiveBudget } from './strategyComparisonHelpers.js';
+import { pickEffectiveBudget, getForecastStartMonth } from './strategyComparisonHelpers.js';
 import {
   toProjectedChartData,
   projectedSeries,
@@ -47,11 +47,10 @@ export default function ForecastChart({ debts, buckets }) {
     dispatch(fetchBankHolidays());
   }, [dispatch]);
 
-  const startMonth = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d;
-  }, []);
+  const startMonth = useMemo(
+    () => getForecastStartMonth({ payCycle: profile?.pay_cycle, holidayCache: bankHolidays }),
+    [profile, bankHolidays],
+  );
 
   // Mirror StrategyComparison's effective-budget logic: auto-suggest from
   // discretionary when the toggle is on, otherwise fall back to the saved

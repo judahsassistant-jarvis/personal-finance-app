@@ -11,7 +11,7 @@ import { fetchRecurringBills } from '../../store/recurringBillsSlice.js';
 import { fetchBankHolidays } from '../../store/systemSlice.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card.jsx';
 import { Separator } from '../ui/separator.jsx';
-import { pickEffectiveBudget, formatPayoffMonth } from './strategyComparisonHelpers.js';
+import { pickEffectiveBudget, getForecastStartMonth, formatPayoffMonth } from './strategyComparisonHelpers.js';
 import { computeMilestones } from './milestonesHelpers.js';
 
 const HORIZON_MONTHS = 360; // 30 years — long enough for any realistic payoff
@@ -33,11 +33,10 @@ export default function MilestonesCard({ debts, buckets }) {
     dispatch(fetchBankHolidays());
   }, [dispatch]);
 
-  const startMonth = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d;
-  }, []);
+  const startMonth = useMemo(
+    () => getForecastStartMonth({ payCycle: profile?.pay_cycle, holidayCache: bankHolidays }),
+    [profile, bankHolidays],
+  );
 
   const totalMinPennies = useMemo(() => {
     const minOnly = runForecast({ debts, buckets, startMonth, months: HORIZON_MONTHS, minOnly: true });

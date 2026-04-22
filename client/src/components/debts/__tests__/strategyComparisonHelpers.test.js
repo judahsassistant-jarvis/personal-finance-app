@@ -5,6 +5,7 @@ import {
   suggestBudgetPennies,
   autoSuggestedBudgetFromDiscretionary,
   pickEffectiveBudget,
+  getForecastStartMonth,
   budgetHelperText,
   formatMonthsDuration,
   formatPayoffMonth,
@@ -94,6 +95,50 @@ describe('formatPayoffMonth', () => {
     expect(formatPayoffMonth('')).toBe('');
     expect(formatPayoffMonth(null)).toBe('');
     expect(formatPayoffMonth('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('getForecastStartMonth', () => {
+  const emptyHolidays = { 'england-and-wales': { events: [] } };
+
+  it('returns a Date', () => {
+    const start = getForecastStartMonth({ payCycle: null, holidayCache: emptyHolidays });
+    expect(start).toBeInstanceOf(Date);
+  });
+
+  it('start date is on or before "now"', () => {
+    const now = new Date(2026, 3, 15);
+    const payCycle = { cadence: 'monthly', day_of_month: 28, shift_rule: 'none', honour_bank_holidays: false };
+    const start = getForecastStartMonth({ payCycle, holidayCache: emptyHolidays, now });
+    expect(start.getTime()).toBeLessThanOrEqual(now.getTime());
+  });
+
+  it('uses the default pay cycle (28th, preceding-weekday) when profile is missing', () => {
+    // Fallback to DEFAULT_PAY_CYCLE: 28th, preceding_weekday, honour_bank_holidays=true.
+    // For now = 2026-04-15 → previous actual pay day was March 27 2026 (a Friday
+    // — March 28 was a Saturday, so preceding_weekday shifts to Friday).
+    const now = new Date(2026, 3, 15);
+    const start = getForecastStartMonth({ payCycle: null, holidayCache: emptyHolidays, now });
+    expect(start.getFullYear()).toBe(2026);
+    expect(start.getMonth()).toBe(2); // March
+  });
+
+  it('honours the user\'s pay day when provided', () => {
+    // Pay day 15th of the month, no shifting.
+    const payCycle = { cadence: 'monthly', day_of_month: 15, shift_rule: 'none', honour_bank_holidays: false };
+    const now = new Date(2026, 3, 20); // April 20
+    const start = getForecastStartMonth({ payCycle, holidayCache: emptyHolidays, now });
+    expect(start.getFullYear()).toBe(2026);
+    expect(start.getMonth()).toBe(3); // April
+    expect(start.getDate()).toBe(15);
+  });
+
+  it('uses the previous cycle when now is before this month\'s pay day', () => {
+    const payCycle = { cadence: 'monthly', day_of_month: 15, shift_rule: 'none', honour_bank_holidays: false };
+    const now = new Date(2026, 3, 10); // April 10 — before the 15th
+    const start = getForecastStartMonth({ payCycle, holidayCache: emptyHolidays, now });
+    expect(start.getMonth()).toBe(2); // March (previous cycle)
+    expect(start.getDate()).toBe(15);
   });
 });
 

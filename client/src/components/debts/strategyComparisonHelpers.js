@@ -1,4 +1,5 @@
-import { STRATEGIES, formatGBP } from '../../firebase/schema.js';
+import { STRATEGIES, formatGBP, DEFAULT_PAY_CYCLE } from '../../firebase/schema.js';
+import { getCurrentCycleBounds } from '../../services/payCycle.js';
 
 /**
  * Pull the headline metrics out of a runForecast result so comparison rows
@@ -117,6 +118,23 @@ export function pickWinnerStrategy(strategiesByKey) {
     }
   }
   return best;
+}
+
+/**
+ * The date the forecast should start from — the beginning of the user's
+ * current pay cycle, not the first of the calendar month. Aligns projections
+ * with how money actually moves for the user (a £150 direct debit on the
+ * 25th lands in the cycle it was budgeted for, not the next one), and keeps
+ * the Dashboard's "remaining this cycle" numbers compatible with the
+ * forecast's month-0 numbers.
+ *
+ * Falls back to DEFAULT_PAY_CYCLE (28th, preceding_weekday) when no profile
+ * is available yet so cards render something coherent on first paint.
+ */
+export function getForecastStartMonth({ payCycle, holidayCache, now = new Date() }) {
+  const cycle = payCycle || DEFAULT_PAY_CYCLE;
+  const { start } = getCurrentCycleBounds(now, cycle, holidayCache);
+  return start;
 }
 
 /**

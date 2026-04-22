@@ -63,9 +63,18 @@ function summarise(result) {
 }
 
 /**
- * Convert a YYYY-MM date-input value into a monthIndex relative to a start
- * month at the first of the month. Returns null for invalid input or dates
- * before the start month.
+ * Convert a YYYY-MM date-input value into a monthIndex relative to a forecast
+ * start month. Since 4d.14, `startMonth` is the user's pay-cycle start — which
+ * for an end-of-month pay day (e.g. 28th) sits in the CALENDAR month before
+ * the cycle's "content month" (the month a UK user thinks they're budgeting
+ * for). A pay day ≥ 15 is treated as "end of month" — the content month is
+ * the following calendar month. Day < 15 is treated as "start of month" —
+ * content month == calendar month.
+ *
+ * Example: startMonth 2026-03-28 represents "April's cycle" → user picking
+ * "April 2026" returns monthIndex 0, not 1.
+ *
+ * Returns null for invalid input or dates before the start month's cycle.
  */
 export function dateInputToMonthIndex(dateInputValue, startMonth) {
   if (!dateInputValue || typeof dateInputValue !== 'string') return null;
@@ -73,9 +82,12 @@ export function dateInputToMonthIndex(dateInputValue, startMonth) {
   if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return null;
   const start = startMonth instanceof Date ? startMonth : new Date(startMonth);
   if (Number.isNaN(start.getTime())) return null;
-  const idx = (y - start.getFullYear()) * 12 + (m - 1 - start.getMonth());
-  if (idx < 0) return null;
-  return idx;
+
+  const startContentOffset = start.getDate() >= 15 ? 1 : 0;
+  const startContentAbs = start.getFullYear() * 12 + start.getMonth() + startContentOffset;
+  const userContentAbs = y * 12 + (m - 1);
+  const idx = userContentAbs - startContentAbs;
+  return idx >= 0 ? idx : null;
 }
 
 /**

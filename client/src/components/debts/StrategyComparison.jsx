@@ -16,6 +16,7 @@ import { Input } from '../ui/input.jsx';
 import {
   summarisePlan,
   pickEffectiveBudget,
+  getForecastStartMonth,
   budgetHelperText,
   formatMonthsDuration,
   formatPayoffMonth,
@@ -47,11 +48,10 @@ export default function StrategyComparison({ debts, buckets }) {
     dispatch(fetchBankHolidays());
   }, [dispatch]);
 
-  const startMonth = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d;
-  }, []);
+  const startMonth = useMemo(
+    () => getForecastStartMonth({ payCycle: profile?.pay_cycle, holidayCache: bankHolidays }),
+    [profile, bankHolidays],
+  );
 
   const minOnlyResult = useMemo(
     () => runForecast({
