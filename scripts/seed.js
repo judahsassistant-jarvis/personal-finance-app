@@ -275,6 +275,13 @@ async function seedTransactions(accountIds) {
     { m: 'Sainsburys', cat: 'Groceries', amt: -6100, day: 12, recurring: false },
     { m: 'TfL', cat: 'Transport', amt: -2800, day: 3, recurring: false },
     { m: 'Employer', cat: 'Income', amt: 380000, day: 28, recurring: true },
+    // Debt payments — seeded without debt_id so the Transactions page's
+    // auto-match suggestions have something to surface. User tags them
+    // to turn them into "Debt Payment" rows that the history view reads.
+    { m: 'BARCLAYCARD BP', cat: 'Bills', amt: -8000, day: 5, recurring: true },
+    { m: 'HALIFAX CREDIT CARD', cat: 'Bills', amt: -3500, day: 15, recurring: true },
+    { m: 'ZOPA LTD DD', cat: 'Bills', amt: -18500, day: 25, recurring: true },
+    { m: 'KLARNA*SOFA', cat: 'Shopping', amt: -9000, day: 1, recurring: true },
   ];
   for (let monthsBack = 0; monthsBack < 3; monthsBack++) {
     for (const t of merchants) {
