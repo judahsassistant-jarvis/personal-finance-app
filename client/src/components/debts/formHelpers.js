@@ -32,6 +32,7 @@ export const emptyDebtForm = {
   start_date: '',
   payment_due_day: '',
   priority: false,
+  reminders_enabled: true,
 };
 
 export function decimalToPercentString(d) {
@@ -67,6 +68,8 @@ export function debtToForm(debt) {
     start_date: debt.start_date != null ? toDateInputValue(debt.start_date) : '',
     payment_due_day: debt.payment_due_day != null ? String(debt.payment_due_day) : '',
     priority: !!debt.priority,
+    // Default-on when the field is missing on legacy docs predating 4d.12.
+    reminders_enabled: debt.reminders_enabled !== false,
   };
 }
 
@@ -154,6 +157,7 @@ export function debtFormToPayload(form) {
     name: form.name.trim(),
     subtype: form.subtype,
     priority: !!form.priority,
+    reminders_enabled: !!form.reminders_enabled,
   };
   if (!isCardLike) {
     payload.balance_pennies = poundsToPennies(form.balance);

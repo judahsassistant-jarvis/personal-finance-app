@@ -164,7 +164,10 @@ async function seedDebts() {
   const ids = {};
   for (const d of debts) {
     const ref = db.collection('debts').doc();
-    await ref.set({ user_id: SEED_UID, ...d, created: now });
+    // Default reminders_enabled=true for all seeded debts — matches newDebtDoc.
+    // Overdraft has no payment_due_day so the toggle has no effect yet, but
+    // the field stays on the doc for consistency.
+    await ref.set({ user_id: SEED_UID, reminders_enabled: true, ...d, created: now });
     ids[d.name] = ref.id;
   }
   return ids;
@@ -209,6 +212,7 @@ async function seedDebtConfig() {
     strategy: 'avalanche',
     monthly_budget_pennies: null,
     auto_suggest_budget: true,
+    reminder_days_before: 3,
     created: now,
   });
 }

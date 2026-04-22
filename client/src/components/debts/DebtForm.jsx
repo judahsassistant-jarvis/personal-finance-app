@@ -244,6 +244,18 @@ export default function DebtForm({ editingDebt, onClose }) {
               />
               <span>Flag as priority</span>
             </label>
+
+            {form.payment_due_day !== '' && (
+              <label className="flex items-center gap-2 text-sm mt-6">
+                <input
+                  type="checkbox"
+                  checked={form.reminders_enabled}
+                  onChange={(e) => field('reminders_enabled', e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                <span>Send payment reminders via email</span>
+              </label>
+            )}
           </div>
         </CardContent>
         <CardFooter className="justify-end gap-2">

@@ -237,6 +237,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {import('firebase/firestore').Timestamp} [start_date] - installment subtypes
  * @property {boolean} priority - flag for visual sort / emphasis
  * @property {number} [payment_due_day] - 1..31 for reminders
+ * @property {boolean} reminders_enabled - whether `generatePaymentReminders` (Sprint 7) should send emails for this debt. Defaults to true; user can disable per-debt in DebtForm. No effect until the Cloud Function ships.
  * @property {import('firebase/firestore').FieldValue} created
  */
 
@@ -391,6 +392,7 @@ export function newDebtDoc({
   start_date,
   priority = false,
   payment_due_day,
+  reminders_enabled = true,
 }) {
   const doc = {
     user_id,
@@ -424,6 +426,7 @@ export function newDebtDoc({
     if (limit_pennies != null) doc.limit_pennies = limit_pennies;
   }
   if (payment_due_day != null) doc.payment_due_day = payment_due_day;
+  doc.reminders_enabled = !!reminders_enabled;
   return doc;
 }
 
@@ -534,12 +537,14 @@ export function newDebtConfigDoc({
   strategy = STRATEGIES.AVALANCHE,
   monthly_budget_pennies = null,
   auto_suggest_budget = true,
+  reminder_days_before = 3,
 }) {
   return {
     user_id,
     strategy,
     monthly_budget_pennies,
     auto_suggest_budget,
+    reminder_days_before,
     created: serverTimestamp(),
   };
 }

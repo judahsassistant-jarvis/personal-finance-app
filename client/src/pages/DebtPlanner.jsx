@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   CreditCard, Landmark, ShoppingBag, Banknote, Plus, Clock,
-  Pencil, Trash2,
+  Pencil, Trash2, Bell, BellOff,
 } from 'lucide-react';
 import { fetchDebts, removeDebt } from '../store/debtsSlice.js';
 import { fetchBuckets, removeBucket } from '../store/cardBucketsSlice.js';
@@ -266,7 +266,16 @@ function DebtRow({
           <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
             <span className="tabular-nums">APR {aprPct}</span>
             <span className="tabular-nums">{minLabel}</span>
-            {dueLabel && <span>{dueLabel}</span>}
+            {dueLabel && (
+              <span className="flex items-center gap-1">
+                {dueLabel}
+                {debt.reminders_enabled !== false ? (
+                  <Bell className="w-3 h-3" aria-label="Payment reminders on" />
+                ) : (
+                  <BellOff className="w-3 h-3 opacity-60" aria-label="Payment reminders off" />
+                )}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
