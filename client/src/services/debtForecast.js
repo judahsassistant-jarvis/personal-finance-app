@@ -139,6 +139,11 @@ export function getHybridScore(effectiveApr, positionIndex, totalBalancePennies)
  * @param {boolean} [options.minOnly=false] - if true, skip extra-allocation phase
  *   regardless of budget. Used to compute the "what if I only paid the minimums"
  *   baseline for strategy comparison.
+ * @param {Object|null} [options.oneOffInjection] - one-off bonus payment to add
+ *   to the extra-allocation pool in a specific month. Shape:
+ *   { monthIndex, amountPennies }. monthIndex is 0-based from startMonth.
+ *   Applies on top of whatever the current mode allocates (so it works in
+ *   both strategy mode and minOnly mode — the bonus is always "extra").
  * @param {Object|null} [options.cashFlow] - optional context recorded on summary rows
  * @returns {Object} { months, payoffSchedules, cliffs, summary, debtFreeMonth }
  */
@@ -150,6 +155,7 @@ export function runForecast({
   monthlyBudget = null,
   strategy = 'avalanche',
   minOnly = false,
+  oneOffInjection = null,
   cashFlow = null,
 }) {
   const start = toDate(startMonth);
@@ -224,8 +230,14 @@ export function runForecast({
       cs.totalBalance = recomputeBalance(cs);
     }
 
-    // Phase 5: allocate extra by strategy (skipped in min-only baseline mode)
-    const extraPool = minOnly ? 0 : Math.max(0, budget - totalMinApplied);
+    // Phase 5: allocate extra by strategy (skipped in min-only baseline mode).
+    // One-off injection is added on top whenever its monthIndex matches — it's
+    // "bonus money" that lands above the regular budget, so it applies in
+    // minOnly mode too.
+    const injectionThisMonth = oneOffInjection && oneOffInjection.monthIndex === m
+      ? Math.max(0, Number(oneOffInjection.amountPennies || 0))
+      : 0;
+    const extraPool = (minOnly ? 0 : Math.max(0, budget - totalMinApplied)) + injectionThisMonth;
     let totalExtraMonth = 0;
     if (extraPool > 0) {
       const targets = buildExtraTargets(activeStates, strategy);

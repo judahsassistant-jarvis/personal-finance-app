@@ -29,6 +29,7 @@ import UtilisationBar from '../components/debts/UtilisationBar.jsx';
 import PayoffProgressBar from '../components/debts/PayoffProgressBar.jsx';
 import ForecastChart from '../components/debts/ForecastChart.jsx';
 import MilestonesCard from '../components/debts/MilestonesCard.jsx';
+import BonusPaymentCard from '../components/debts/BonusPaymentCard.jsx';
 import PromoCliffCountdown from '../components/debts/PromoCliffCountdown.jsx';
 
 // Single source of truth for subtype → icon. Used for both the group
@@ -165,6 +166,7 @@ export default function DebtPlanner() {
           <StrategyComparison debts={debts} buckets={buckets} />
           <ForecastChart debts={debts} buckets={buckets} />
           <MilestonesCard debts={debts} buckets={buckets} />
+          <BonusPaymentCard debts={debts} buckets={buckets} />
         </>
       )}
 

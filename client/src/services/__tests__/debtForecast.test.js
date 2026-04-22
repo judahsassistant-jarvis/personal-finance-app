@@ -299,6 +299,62 @@ describe('runForecast — minOnly baseline', () => {
   });
 });
 
+describe('runForecast — oneOffInjection', () => {
+  const makeSetup = () => {
+    const debts = [{
+      id: 'd1', subtype: DEBT_SUBTYPES.CARD, name: 'Card',
+      balance_pennies: 500000, standard_apr: 0.20, min_percentage: 0.02, min_floor_pennies: 2500,
+    }];
+    const buckets = [{ id: 'b1', debt_id: 'd1', name: 'P', balance_pennies: 500000, apr: 0.20, is_promo: false }];
+    return { debts, buckets };
+  };
+
+  test('a one-off bonus in month 0 reduces total interest vs no injection', () => {
+    const { debts, buckets } = makeSetup();
+    const baseline = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 120, monthlyBudget: 30000, strategy: 'avalanche' });
+    const withBonus = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 120, monthlyBudget: 30000, strategy: 'avalanche', oneOffInjection: { monthIndex: 0, amountPennies: 100000 } });
+    expect(withBonus.summary.totalInterestPennies).toBeLessThan(baseline.summary.totalInterestPennies);
+    expect(withBonus.summary.monthsToPayoff).toBeLessThanOrEqual(baseline.summary.monthsToPayoff);
+  });
+
+  test('injection only fires in the specified month — later months have no extra over the budget', () => {
+    const { debts, buckets } = makeSetup();
+    const r = runForecast({
+      debts, buckets, startMonth: '2026-05-01', months: 3,
+      monthlyBudget: 30000, strategy: 'avalanche',
+      oneOffInjection: { monthIndex: 0, amountPennies: 100000 },
+    });
+    // Month 0: extra includes bonus. Month 1+: extra is budget-minus-min only.
+    expect(r.months[0].extra_payments_pennies).toBeGreaterThan(r.months[1].extra_payments_pennies);
+  });
+
+  test('injecting in a future month still applies even after balances have moved', () => {
+    const { debts, buckets } = makeSetup();
+    const r = runForecast({
+      debts, buckets, startMonth: '2026-05-01', months: 6,
+      monthlyBudget: 30000, strategy: 'avalanche',
+      oneOffInjection: { monthIndex: 3, amountPennies: 100000 },
+    });
+    // Month 3's extra should be substantially larger than the surrounding months
+    expect(r.months[3].extra_payments_pennies).toBeGreaterThan(r.months[2].extra_payments_pennies + 50000);
+  });
+
+  test('injection works in minOnly mode (bonus is above-minimum either way)', () => {
+    const { debts, buckets } = makeSetup();
+    const baselineMinOnly = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 600, minOnly: true, monthlyBudget: 30000 });
+    const withBonusMinOnly = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 600, minOnly: true, monthlyBudget: 30000, oneOffInjection: { monthIndex: 0, amountPennies: 100000 } });
+    expect(withBonusMinOnly.summary.totalInterestPennies).toBeLessThan(baselineMinOnly.summary.totalInterestPennies);
+  });
+
+  test('zero-amount injection has no effect', () => {
+    const { debts, buckets } = makeSetup();
+    const baseline = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 24, monthlyBudget: 30000, strategy: 'avalanche' });
+    const withZero = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 24, monthlyBudget: 30000, strategy: 'avalanche', oneOffInjection: { monthIndex: 0, amountPennies: 0 } });
+    expect(withZero.summary.totalInterestPennies).toBe(baseline.summary.totalInterestPennies);
+    expect(withZero.summary.monthsToPayoff).toBe(baseline.summary.monthsToPayoff);
+  });
+});
+
 describe('runForecast — hybrid strategy', () => {
   test('with no sub-£500 debts, behaves like avalanche (highest APR first)', () => {
     const debts = [
