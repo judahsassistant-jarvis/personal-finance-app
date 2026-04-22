@@ -33,8 +33,12 @@ export function inferRecurringBills({
   const windowStart = new Date(asOf);
   windowStart.setMonth(windowStart.getMonth() - lookbackMonths);
 
-  // Filter: outflows in the lookback window.
+  // Filter: outflows in the lookback window. Debt-tagged transactions are
+  // excluded — a debt payment lives in the debts collection as a fixed
+  // minimum or similar; surfacing it here too would double-count in the
+  // Dashboard's discretionary calc (§3.7 "Debts vs recurring_bills").
   const inWindow = transactions.filter((t) => {
+    if (t.debt_id) return false;
     const d = toDate(t.date);
     if (!d) return false;
     return d >= windowStart && d <= asOf && Number(t.amount_pennies || 0) < 0;
@@ -168,6 +172,22 @@ export function billStatusInCycle({ bill, transactions, cycleStart, cycleEnd, no
   const expectedThisCycle = billDateInCycle(bill, cycleStart, cycleEnd);
   if (!expectedThisCycle) return 'upcoming';
   return now >= expectedThisCycle ? 'missed' : 'upcoming';
+}
+
+/**
+ * Find a recurring_bills row whose merchant matches the given name (case-
+ * insensitive exact match on the normalised string). Used by the "you just
+ * tagged a transaction as a debt payment — remove its duplicate bill?"
+ * prompt in the Transactions page. Returns the matching bill or null.
+ */
+export function findMatchingRecurringBill(merchant, bills) {
+  if (!merchant) return null;
+  const needle = String(merchant).toLowerCase().trim();
+  if (!needle) return null;
+  for (const b of bills || []) {
+    if ((b.merchant || '').toLowerCase().trim() === needle) return b;
+  }
+  return null;
 }
 
 /**

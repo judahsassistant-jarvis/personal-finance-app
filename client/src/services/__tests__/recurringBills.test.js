@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { inferRecurringBills, billStatusInCycle, remainingBillsInCycle } from '../recurringBills.js';
+import { inferRecurringBills, billStatusInCycle, remainingBillsInCycle, findMatchingRecurringBill } from '../recurringBills.js';
 
 function tx(date, merchant, pounds, category = 'Bills') {
   return { date, merchant, amount_pennies: Math.round(pounds * 100), category };
@@ -71,6 +71,55 @@ describe('inferRecurringBills', () => {
     ];
     const out = inferRecurringBills({ transactions, asOf: new Date(2026, 3, 1), lookbackMonths: 6 });
     expect(out.map((b) => b.merchant)).toEqual(['Early Bill', 'Late Bill']);
+  });
+
+  test('excludes transactions tagged with debt_id (§3.7 single-source rule)', () => {
+    // A debt payment like BARCLAYCARD BP appears every month with the same
+    // amount — the old inference would pick it up as a "bill", which would
+    // then double-count in safe-to-spend alongside the debt minimum. Once
+    // the user tags it with debt_id, the inference must stop surfacing it.
+    const transactions = [
+      { ...tx('2026-01-05', 'BARCLAYCARD BP', -80), debt_id: 'd1' },
+      { ...tx('2026-02-05', 'BARCLAYCARD BP', -80), debt_id: 'd1' },
+      { ...tx('2026-03-05', 'BARCLAYCARD BP', -80), debt_id: 'd1' },
+      tx('2026-01-05', 'Netflix', -13.99),
+      tx('2026-02-05', 'Netflix', -13.99),
+      tx('2026-03-05', 'Netflix', -13.99),
+    ];
+    const out = inferRecurringBills({ transactions, asOf: new Date(2026, 3, 15), lookbackMonths: 6 });
+    const merchants = out.map((b) => b.merchant);
+    expect(merchants).toContain('Netflix');
+    expect(merchants).not.toContain('BARCLAYCARD BP');
+  });
+});
+
+describe('findMatchingRecurringBill', () => {
+  test('exact case-insensitive merchant match returns the bill', () => {
+    const bills = [
+      { id: 'b1', merchant: 'BARCLAYCARD BP', category: 'Bills' },
+      { id: 'b2', merchant: 'Netflix', category: 'Entertainment' },
+    ];
+    expect(findMatchingRecurringBill('barclaycard bp', bills).id).toBe('b1');
+    expect(findMatchingRecurringBill('NETFLIX', bills).id).toBe('b2');
+  });
+
+  test('returns null when no bill matches', () => {
+    const bills = [{ id: 'b1', merchant: 'Spotify' }];
+    expect(findMatchingRecurringBill('Tesco', bills)).toBeNull();
+  });
+
+  test('returns null for empty / null inputs', () => {
+    expect(findMatchingRecurringBill('', [{ id: 'b', merchant: 'X' }])).toBeNull();
+    expect(findMatchingRecurringBill(null, [])).toBeNull();
+    expect(findMatchingRecurringBill('X', null)).toBeNull();
+  });
+
+  test('requires exact merchant match (no partial / fuzzy)', () => {
+    // By design: we don't want to accidentally delete the user's Netflix
+    // bill when they tag a "NETFLIX REFUND" transaction. Tag + cascade is
+    // deliberately conservative.
+    const bills = [{ id: 'b1', merchant: 'Netflix' }];
+    expect(findMatchingRecurringBill('Netflix Gift Card', bills)).toBeNull();
   });
 });
 

@@ -4,7 +4,9 @@ import { Sparkles, Check, X as XIcon } from 'lucide-react';
 import { fetchTransactions, editTransaction } from '../store/transactionsSlice.js';
 import { fetchDebts } from '../store/debtsSlice.js';
 import { fetchAccounts } from '../store/accountsSlice.js';
+import { fetchRecurringBills, removeRecurringBill } from '../store/recurringBillsSlice.js';
 import { suggestTagsForUntagged } from '../services/debtPaymentMatcher.js';
+import { findMatchingRecurringBill } from '../services/recurringBills.js';
 import { formatGBP } from '../firebase/schema.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
 import { Badge } from '../components/ui/badge.jsx';
@@ -22,6 +24,7 @@ export default function Transactions() {
   const transactions = useSelector((s) => s.transactions.items);
   const debts = useSelector((s) => s.debts.items);
   const accounts = useSelector((s) => s.accounts.items);
+  const recurringBills = useSelector((s) => s.recurringBills.items);
   const loading = useSelector((s) => s.transactions.loading);
 
   const [filter, setFilter] = useState('all');
@@ -30,6 +33,7 @@ export default function Transactions() {
     dispatch(fetchTransactions());
     dispatch(fetchDebts());
     dispatch(fetchAccounts());
+    dispatch(fetchRecurringBills());
   }, [dispatch]);
 
   const suggestions = useMemo(
@@ -58,12 +62,32 @@ export default function Transactions() {
     'debt-payments': transactions.filter((t) => t.debt_id).length,
   }), [transactions, suggestions]);
 
-  const handleTag = (tx, debtId) => {
-    dispatch(editTransaction({
+  const handleTag = async (tx, debtId) => {
+    await dispatch(editTransaction({
       id: tx.id,
       debt_id: debtId ?? null,
       category: debtId ? 'Debt Payment' : tx.category,
-    }));
+    })).unwrap();
+
+    // Cascade: if tagging just moved an outflow from "bill" territory into
+    // "debt payment" territory, there may still be a recurring_bills row for
+    // the same merchant (auto-inferred before tagging). Offer to remove it,
+    // per §3.7's single-source-of-truth rule. Only prompts when the merchant
+    // actually matches an existing bill — silent otherwise.
+    if (debtId) {
+      const matchingBill = findMatchingRecurringBill(tx.merchant, recurringBills);
+      if (matchingBill) {
+        const debt = debtById.get(debtId);
+        const confirmed = window.confirm(
+          `"${tx.merchant}" is also tracked as a recurring bill (${matchingBill.category || 'Bills'}). ` +
+          `It's now tagged under ${debt?.name ?? 'this debt'}, so keeping the bill row would ` +
+          'double-count it in your safe-to-spend.\n\nRemove the recurring bill?'
+        );
+        if (confirmed) {
+          await dispatch(removeRecurringBill(matchingBill.id)).unwrap();
+        }
+      }
+    }
   };
 
   if (loading && transactions.length === 0) {
