@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   CreditCard, Landmark, ShoppingBag, Banknote, Plus, Clock,
-  Pencil, Trash2, Bell, BellOff, Receipt,
+  Pencil, Trash2, Bell, BellOff, Receipt, History,
 } from 'lucide-react';
 import { fetchDebts, removeDebt } from '../store/debtsSlice.js';
 import { fetchBuckets, removeBucket } from '../store/cardBucketsSlice.js';
+import { fetchTransactions } from '../store/transactionsSlice.js';
+import { fetchBalanceSnapshots } from '../store/balanceSnapshotsSlice.js';
 import {
   DEBT_SUBTYPES,
   CARD_LIKE_SUBTYPES,
@@ -33,6 +35,7 @@ import BonusPaymentCard from '../components/debts/BonusPaymentCard.jsx';
 import WhatIfScenarioCard from '../components/debts/WhatIfScenarioCard.jsx';
 import PromoCliffCountdown from '../components/debts/PromoCliffCountdown.jsx';
 import RecordSnapshotForm from '../components/debts/RecordSnapshotForm.jsx';
+import PaymentHistoryPanel from '../components/debts/PaymentHistoryPanel.jsx';
 
 // Single source of truth for subtype → icon. Used for both the group
 // header (via GROUPS below) and the per-row visual badge in DebtRow.
@@ -90,10 +93,14 @@ export default function DebtPlanner() {
   const [bucketForm, setBucketForm] = useState(null);
   // Snapshot form state: null | { debtId }
   const [snapshotForm, setSnapshotForm] = useState(null);
+  // History panel open per row: null | debtId
+  const [historyOpenId, setHistoryOpenId] = useState(null);
 
   useEffect(() => {
     dispatch(fetchDebts());
     dispatch(fetchBuckets());
+    dispatch(fetchTransactions());
+    dispatch(fetchBalanceSnapshots());
   }, [dispatch]);
 
   const bucketsByDebtId = useMemo(() => {
@@ -191,6 +198,7 @@ export default function DebtPlanner() {
                 group={group}
                 bucketForm={bucketForm}
                 snapshotForm={snapshotForm}
+                historyOpenId={historyOpenId}
                 onEditDebt={(debt) => setDebtForm({ mode: 'edit', debt })}
                 onDeleteDebt={handleDeleteDebt}
                 onAddBucket={(debtId) => setBucketForm({ debtId, bucket: null })}
@@ -199,6 +207,7 @@ export default function DebtPlanner() {
                 onCloseBucketForm={() => setBucketForm(null)}
                 onRecordSnapshot={(debtId) => setSnapshotForm({ debtId })}
                 onCloseSnapshotForm={() => setSnapshotForm(null)}
+                onToggleHistory={(debtId) => setHistoryOpenId((prev) => prev === debtId ? null : debtId)}
               />
             )
           ))}
@@ -209,10 +218,10 @@ export default function DebtPlanner() {
 }
 
 function DebtGroup({
-  group, bucketForm, snapshotForm,
+  group, bucketForm, snapshotForm, historyOpenId,
   onEditDebt, onDeleteDebt,
   onAddBucket, onEditBucket, onDeleteBucket, onCloseBucketForm,
-  onRecordSnapshot, onCloseSnapshotForm,
+  onRecordSnapshot, onCloseSnapshotForm, onToggleHistory,
 }) {
   const Icon = group.icon;
   return (
@@ -232,6 +241,7 @@ function DebtGroup({
               row={row}
               bucketForm={bucketForm}
               snapshotForm={snapshotForm}
+              historyOpen={historyOpenId === row.debt.id}
               onEditDebt={onEditDebt}
               onDeleteDebt={onDeleteDebt}
               onAddBucket={onAddBucket}
@@ -240,6 +250,7 @@ function DebtGroup({
               onCloseBucketForm={onCloseBucketForm}
               onRecordSnapshot={onRecordSnapshot}
               onCloseSnapshotForm={onCloseSnapshotForm}
+              onToggleHistory={onToggleHistory}
             />
           </div>
         ))}
@@ -249,10 +260,10 @@ function DebtGroup({
 }
 
 function DebtRow({
-  row, bucketForm, snapshotForm,
+  row, bucketForm, snapshotForm, historyOpen,
   onEditDebt, onDeleteDebt,
   onAddBucket, onEditBucket, onDeleteBucket, onCloseBucketForm,
-  onRecordSnapshot, onCloseSnapshotForm,
+  onRecordSnapshot, onCloseSnapshotForm, onToggleHistory,
 }) {
   const { debt, totalBalance, min, blendedApr, promo, buckets, utilisation, payoffProgress } = row;
   const aprPct = blendedApr > 0 ? `${(blendedApr * 100).toFixed(1)}%` : '—';
@@ -316,24 +327,40 @@ function DebtRow({
       {utilisation && <UtilisationBar utilisation={utilisation} />}
       {payoffProgress && <PayoffProgressBar progress={payoffProgress} />}
 
-      {supportsSnapshot && (
-        snapshotFormOpenHere ? (
-          <RecordSnapshotForm
-            debt={debt}
-            currentBalancePennies={totalBalance}
-            onClose={onCloseSnapshotForm}
-          />
-        ) : (
+      {supportsSnapshot && snapshotFormOpenHere && (
+        <RecordSnapshotForm
+          debt={debt}
+          currentBalancePennies={totalBalance}
+          onClose={onCloseSnapshotForm}
+        />
+      )}
+
+      {!snapshotFormOpenHere && (
+        <div className="mt-2 flex items-center gap-1 flex-wrap">
+          {supportsSnapshot && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onRecordSnapshot(debt.id)}
+              className="h-7 text-xs"
+            >
+              <Receipt className="w-3 h-3" />Record statement balance
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onRecordSnapshot(debt.id)}
-            className="mt-2 h-7 text-xs"
+            onClick={() => onToggleHistory(debt.id)}
+            className="h-7 text-xs"
+            aria-expanded={historyOpen}
           >
-            <Receipt className="w-3 h-3" />Record statement balance
+            <History className="w-3 h-3" />
+            {historyOpen ? 'Hide history' : 'Show history'}
           </Button>
-        )
+        </div>
       )}
+
+      {historyOpen && <PaymentHistoryPanel debt={debt} />}
 
       {isCardLike && (
         <div className="mt-3 ml-2 border-l-2 border-border pl-3 space-y-2">
