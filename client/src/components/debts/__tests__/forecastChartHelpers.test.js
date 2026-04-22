@@ -194,11 +194,22 @@ describe('toActualChartData', () => {
     expect(out[0].Zopa_actual).toBe(4950);
   });
 
-  it('drops snapshots before the forecast horizon starts', () => {
-    const before = new Date('2026-01-15').getTime();
-    const snapshots = [{ debt_id: 'd1', as_of_date: before, balance_pennies: 600000 }];
+  it('clamps a snapshot dated just before the forecast start to row 0', () => {
+    // Common case: pay-cycle-aligned forecast starts late in the calendar
+    // month, but the user recorded a statement a week earlier. That snapshot
+    // is still "current cycle" data and should show as the month-0 actual.
+    const justBefore = new Date('2026-04-28').getTime(); // before the May row
+    const snapshots = [{ debt_id: 'd1', as_of_date: justBefore, balance_pennies: 510000 }];
     const out = toActualChartData(months, debts, snapshots);
-    expect(out.every((r) => !('Zopa_actual' in r))).toBe(true);
+    expect(out[0].Zopa_actual).toBe(5100);
+    expect(out[1]).not.toHaveProperty('Zopa_actual');
+  });
+
+  it('clamps a much-earlier snapshot to row 0 too (latest authoritative balance wins)', () => {
+    const oldSnap = new Date('2025-10-15').getTime(); // months before
+    const snapshots = [{ debt_id: 'd1', as_of_date: oldSnap, balance_pennies: 600000 }];
+    const out = toActualChartData(months, debts, snapshots);
+    expect(out[0].Zopa_actual).toBe(6000);
   });
 
   it('assigns snapshots after the last forecast row to the last row', () => {
@@ -267,6 +278,44 @@ describe('toSavingsChartData', () => {
     const out = toSavingsChartData(plan, minOnly);
     expect(out[0].savedPounds).toBeCloseTo(20, 5);   // 3000 - 1000 = 2000p
     expect(out[1].savedPounds).toBeCloseTo(10, 5);   // still 3000 total - 2000 total = 1000p
+  });
+
+  it('continues past plan end — most savings accrue after the plan is paid off', () => {
+    // Plan pays off in 2 months (no more interest after). Min-only keeps
+    // paying interest for 4 months. The chart should run to 4 months, and
+    // savings should GROW after month 2 as min-only keeps charging.
+    const plan = [
+      { month: '2026-05-01', interest_pennies: 500 },
+      { month: '2026-06-01', interest_pennies: 200 },
+      // plan is done — no months 3/4
+    ];
+    const minOnly = [
+      { month: '2026-05-01', interest_pennies: 500 },
+      { month: '2026-06-01', interest_pennies: 500 },
+      { month: '2026-07-01', interest_pennies: 500 },
+      { month: '2026-08-01', interest_pennies: 500 },
+    ];
+    const out = toSavingsChartData(plan, minOnly);
+    expect(out).toHaveLength(4);
+    // month 0: both paid 500p → 0 saved
+    expect(out[0].savedPounds).toBeCloseTo(0, 5);
+    // month 1: plan +200, min +500 → 300p saved = £3
+    expect(out[1].savedPounds).toBeCloseTo(3, 5);
+    // month 2: plan still at 700 (done), min at 1500 → 800p saved = £8
+    expect(out[2].savedPounds).toBeCloseTo(8, 5);
+    // month 3: plan still 700, min 2000 → 1300p = £13
+    expect(out[3].savedPounds).toBeCloseTo(13, 5);
+  });
+
+  it('uses the longer array\'s month labels for the X axis', () => {
+    const plan = [{ month: '2026-05-01', interest_pennies: 100 }];
+    const minOnly = [
+      { month: '2026-05-01', interest_pennies: 200 },
+      { month: '2026-06-01', interest_pennies: 200 },
+    ];
+    const out = toSavingsChartData(plan, minOnly);
+    expect(out).toHaveLength(2);
+    expect(out[1].month).toBe("Jun '26");
   });
 });
 

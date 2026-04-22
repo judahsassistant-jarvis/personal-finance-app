@@ -168,11 +168,15 @@ function toMillisLoose(d) {
 
 // Given an array of forecast-month start-ms and a snapshot timestamp, return
 // the index of the forecast row the snapshot belongs to (the latest row
-// whose start ≤ snapshot). -1 if before all rows; last row if after all.
+// whose start ≤ snapshot). A snapshot taken a few days before the forecast
+// start (common: pay-cycle-aligned forecasts start late in the calendar
+// month, but statements are dated across the whole month) clamps to row 0 —
+// that's the current cycle from the user's perspective, and dropping it
+// would hide the only actual data we have.
 function bucketIndex(snapMs, forecastMonthMs) {
   if (!Number.isFinite(snapMs) || snapMs <= 0) return -1;
   if (forecastMonthMs.length === 0) return -1;
-  if (snapMs < forecastMonthMs[0]) return -1;
+  if (snapMs < forecastMonthMs[0]) return 0;
   for (let i = forecastMonthMs.length - 1; i >= 0; i--) {
     if (snapMs >= forecastMonthMs[i]) return i;
   }
@@ -181,22 +185,30 @@ function bucketIndex(snapMs, forecastMonthMs) {
 
 /**
  * Savings-tab chart data: cumulative interest saved vs a min-only baseline,
- * month by month. The min-only forecast usually runs longer than the active
- * plan, so we align on the active plan's month count; any min-only months
- * beyond that are omitted (the active plan already reached debt-free).
+ * month by month.
+ *
+ * Most of the savings accrue AFTER the active plan is paid off — the plan
+ * stops accruing interest (user is debt-free) while min-only keeps paying.
+ * So we iterate to the max length of either forecast; months where one side
+ * has run out contribute 0 to that side's cumulative. Month labels come from
+ * whichever array is longer so the X axis spans the full comparison window.
  */
 export function toSavingsChartData(planMonths, minOnlyMonths) {
-  if (!Array.isArray(planMonths) || planMonths.length === 0) return [];
+  const planLen = Array.isArray(planMonths) ? planMonths.length : 0;
+  const minLen = Array.isArray(minOnlyMonths) ? minOnlyMonths.length : 0;
+  const maxLen = Math.max(planLen, minLen);
+  if (maxLen === 0) return [];
+  const labelSource = minLen >= planLen ? minOnlyMonths : planMonths;
+
   const rows = [];
   let planCum = 0;
   let minCum = 0;
-  for (let i = 0; i < planMonths.length; i++) {
-    planCum += Number(planMonths[i].interest_pennies || 0);
-    const mm = minOnlyMonths?.[i];
-    if (mm) minCum += Number(mm.interest_pennies || 0);
+  for (let i = 0; i < maxLen; i++) {
+    planCum += Number(planMonths?.[i]?.interest_pennies || 0);
+    minCum += Number(minOnlyMonths?.[i]?.interest_pennies || 0);
     const savedPennies = Math.max(0, minCum - planCum);
     rows.push({
-      month: shortMonth(planMonths[i].month),
+      month: shortMonth(labelSource[i].month),
       savedPounds: savedPennies / 100,
     });
   }
