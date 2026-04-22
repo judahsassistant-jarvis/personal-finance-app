@@ -226,7 +226,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {string} name
  * @property {string} subtype - one of DEBT_SUBTYPES
  * @property {number} balance_pennies - current balance (for card/revolving/overdraft) or principal (for installments)
- * @property {number} [starting_balance_pennies] - reference balance for payoff-progress bar on installment debts (loan/BNPL); defaults to balance_pennies at creation. Omitted for card_like — those use utilisation instead.
+ * @property {number} [starting_balance_pennies] - reference for the payoff-progress bar on installment debts (loan/BNPL) only; defaults to balance_pennies at creation. Cards and overdrafts (revolving credit) use utilisation instead and never carry this field.
  * @property {number} [standard_apr] - decimal; used by card_like + revolving subtypes
  * @property {number} [min_percentage] - decimal; card subtypes (e.g. 0.02 = 2%)
  * @property {number} [min_floor_pennies] - card subtypes
@@ -400,11 +400,12 @@ export function newDebtDoc({
     priority,
     created: serverTimestamp(),
   };
-  // Non-card-like debts anchor "payoff progress" on their starting balance.
+  // Installment debts anchor "payoff progress" on their starting balance.
   // Default to the current balance if the caller didn't provide one, so a
   // brand-new loan starts at 0% paid off with a coherent reference point.
-  // Card-like debts use utilisation (balance / limit) instead, so we skip.
-  if (!CARD_LIKE_SUBTYPES.has(subtype)) {
+  // Cards and overdrafts use utilisation (balance / limit) instead, so we
+  // skip them here.
+  if (INSTALLMENT_SUBTYPES.has(subtype)) {
     doc.starting_balance_pennies = starting_balance_pennies ?? balance_pennies;
   }
   if (CARD_LIKE_SUBTYPES.has(subtype)) {

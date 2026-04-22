@@ -24,12 +24,14 @@ export function enrichDebt(debt, debtBuckets) {
   if (INSTALLMENT_SUBTYPES.has(debt.subtype)) {
     const totalBalance = Number(debt.balance_pennies || 0);
     const min = calcInstallmentMinPayment(debt, totalBalance);
-    const payoffProgress = computePayoffProgress(debt, totalBalance, 'installment');
+    const payoffProgress = computePayoffProgress(debt, totalBalance);
     return { debt, buckets: [], totalBalance, min, blendedApr: Number(debt.standard_apr || 0), promo: null, payoffProgress };
   }
   if (REVOLVING_SUBTYPES.has(debt.subtype)) {
+    // Overdrafts are revolving credit — utilisation is the right lens
+    // (0% used = clean, 100% = maxed), not payoff progress.
     const totalBalance = Number(debt.balance_pennies || 0);
-    const payoffProgress = computePayoffProgress(debt, totalBalance, 'overdraft');
+    const utilisation = computeUtilisation(debt, totalBalance);
     return {
       debt,
       buckets: [],
@@ -37,7 +39,7 @@ export function enrichDebt(debt, debtBuckets) {
       min: 0,
       blendedApr: Number(debt.standard_apr || 0),
       promo: null,
-      payoffProgress,
+      utilisation,
     };
   }
   return { debt, buckets: [], totalBalance: 0, min: 0, blendedApr: 0, promo: null };
@@ -148,41 +150,36 @@ function bandForRatio(ratio) {
 }
 
 /**
- * Payoff progress — how far a non-revolving debt has been paid down from its
- * reference point toward zero.
+ * Payoff progress — how far an installment debt has been paid down from its
+ * starting principal toward zero.
  *
- * For installment debts (BNPL, personal loan), the reference is the debt's
- * `starting_balance_pennies` — its original principal when the user took it on.
- * For overdrafts, the reference is `limit_pennies` (the overdraft facility).
- * An overdraft's "starting balance" drifts month to month, so the limit is a
- * more stable anchor — clearing £500 of a £1,000 facility always reads as 50%
- * progress, regardless of where the balance was last week.
+ * Only applies to fixed-term debts (BNPL, personal loan) with a recorded
+ * `starting_balance_pennies`. Revolving credit (cards, overdrafts) uses
+ * utilisation instead — for an overdraft a "100% payoff" reading on a clean
+ * balance would be misleading (the user hasn't paid anything off, they just
+ * haven't dipped into it). Revolving credit wants the inverse lens:
+ * what % of the facility are you currently using?
  *
- * Returns null when no valid reference is available (e.g. limit not set on an
- * overdraft, or a legacy installment debt with no starting_balance). The bar
- * renders nothing in that case rather than showing a fake 0%.
+ * Returns null when no valid starting balance is available (e.g. a legacy
+ * debt predating this field). The bar renders nothing in that case rather
+ * than faking a 0%.
  *
- * @param {Object} debt - DebtDoc
- * @param {number} currentBalance - total balance in pennies (caller-computed)
- * @param {'installment' | 'overdraft'} mode
+ * @param {Object} debt - DebtDoc with starting_balance_pennies
+ * @param {number} currentBalance - total balance in pennies
  */
-export function computePayoffProgress(debt, currentBalance, mode) {
-  const referencePennies = mode === 'overdraft'
-    ? Number(debt?.limit_pennies ?? 0)
-    : Number(debt?.starting_balance_pennies ?? 0);
-
-  if (!Number.isFinite(referencePennies) || referencePennies <= 0) return null;
+export function computePayoffProgress(debt, currentBalance) {
+  const startingPennies = Number(debt?.starting_balance_pennies ?? 0);
+  if (!Number.isFinite(startingPennies) || startingPennies <= 0) return null;
 
   const balance = Math.max(0, Number(currentBalance || 0));
-  const paidPennies = Math.max(0, referencePennies - balance);
-  const progressRatio = Math.min(1, paidPennies / referencePennies);
+  const paidPennies = Math.max(0, startingPennies - balance);
+  const progressRatio = Math.min(1, paidPennies / startingPennies);
 
   return {
     progressRatio,
-    referencePennies,
+    startingPennies,
     paidPennies,
     remainingPennies: balance,
-    mode,
   };
 }
 

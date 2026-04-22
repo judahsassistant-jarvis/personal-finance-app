@@ -1,17 +1,9 @@
 import { formatGBP } from '../../firebase/schema.js';
 
-// Sub-caption suffix differs by reference type. Installment debts anchor on
-// the original principal ("starting"); overdrafts anchor on the facility size.
-const MODE_COPY = {
-  installment: { suffix: 'starting balance', noun: 'paid' },
-  overdraft: { suffix: 'overdraft facility', noun: 'cleared' },
-};
-
 export default function PayoffProgressBar({ progress }) {
   if (!progress) return null;
-  const { progressRatio, referencePennies, paidPennies, mode } = progress;
+  const { progressRatio, startingPennies, paidPennies } = progress;
   const pctLabel = `${Math.round(progressRatio * 100)}%`;
-  const copy = MODE_COPY[mode] ?? MODE_COPY.installment;
 
   return (
     <div className="mt-2 mb-1">
@@ -20,7 +12,7 @@ export default function PayoffProgressBar({ progress }) {
           Payoff progress <span className="text-foreground">{pctLabel}</span>
         </span>
         <span className="tabular-nums">
-          {formatGBP(paidPennies)} {copy.noun} of {formatGBP(referencePennies)} {copy.suffix}
+          {formatGBP(paidPennies)} paid of {formatGBP(startingPennies)} starting balance
         </span>
       </div>
       <div className="h-1.5 rounded-full bg-muted overflow-hidden">
