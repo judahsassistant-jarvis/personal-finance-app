@@ -1,0 +1,253 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, ReferenceLine,
+} from 'recharts';
+import { runForecast } from '../../services/debtForecast.js';
+import { computeDiscretionary } from '../../services/discretionary.js';
+import { STRATEGIES, DEFAULT_PAY_CYCLE, formatGBP } from '../../firebase/schema.js';
+import { ensureDebtConfig } from '../../store/debtConfigSlice.js';
+import { fetchAccounts } from '../../store/accountsSlice.js';
+import { fetchTransactions } from '../../store/transactionsSlice.js';
+import { fetchRecurringBills } from '../../store/recurringBillsSlice.js';
+import { fetchBankHolidays } from '../../store/systemSlice.js';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card.jsx';
+import { Button } from '../ui/button.jsx';
+import {
+  suggestBudgetPennies,
+  autoSuggestedBudgetFromDiscretionary,
+} from './strategyComparisonHelpers.js';
+import {
+  toProjectedChartData,
+  projectedSeries,
+  toUtilisationChartData,
+} from './forecastChartHelpers.js';
+
+const HORIZON_MONTHS = 120; // 10 years — enough for most payoffs to complete
+
+const TABS = [
+  { key: 'projected', label: 'Projected' },
+  { key: 'utilisation', label: 'Utilisation' },
+];
+
+export default function ForecastChart({ debts, buckets }) {
+  const dispatch = useDispatch();
+  const config = useSelector((s) => s.debtConfig.doc);
+  const profile = useSelector((s) => s.auth.profile);
+  const accounts = useSelector((s) => s.accounts.items);
+  const bills = useSelector((s) => s.recurringBills.items);
+  const transactions = useSelector((s) => s.transactions.items);
+  const bankHolidays = useSelector((s) => s.system.bankHolidays);
+
+  const [tab, setTab] = useState('projected');
+
+  useEffect(() => {
+    dispatch(ensureDebtConfig());
+    dispatch(fetchAccounts());
+    dispatch(fetchTransactions());
+    dispatch(fetchRecurringBills());
+    dispatch(fetchBankHolidays());
+  }, [dispatch]);
+
+  const startMonth = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d;
+  }, []);
+
+  // Mirror StrategyComparison's effective-budget logic: auto-suggest from
+  // discretionary when the toggle is on, otherwise fall back to the saved
+  // budget, otherwise the rule-of-thumb heuristic.
+  const totalMinPennies = useMemo(() => {
+    const minOnly = runForecast({ debts, buckets, startMonth, months: HORIZON_MONTHS, minOnly: true });
+    const firstRow = minOnly.months[0];
+    return firstRow ? firstRow.minimum_payments_pennies : 0;
+  }, [debts, buckets, startMonth]);
+
+  const discretionaryCalc = useMemo(() => {
+    if (!profile) return null;
+    const payCycle = profile.pay_cycle || DEFAULT_PAY_CYCLE;
+    return computeDiscretionary({
+      accounts, debts, bills, transactions,
+      payCycle,
+      holidayCache: bankHolidays,
+      bufferPennies: Number(profile.buffer_pennies ?? 0),
+    });
+  }, [profile, accounts, debts, bills, transactions, bankHolidays]);
+  const discretionaryPennies = discretionaryCalc?.discretionary_pennies ?? null;
+
+  const autoSuggestEnabled = config?.auto_suggest_budget ?? true;
+  const savedBudget = config?.monthly_budget_pennies ?? null;
+  const effectiveBudget = useMemo(() => {
+    if (autoSuggestEnabled) {
+      const auto = autoSuggestedBudgetFromDiscretionary(discretionaryPennies, totalMinPennies);
+      if (auto != null) return auto;
+    }
+    if (savedBudget != null) return savedBudget;
+    return suggestBudgetPennies(totalMinPennies);
+  }, [autoSuggestEnabled, discretionaryPennies, totalMinPennies, savedBudget]);
+
+  const strategy = config?.strategy ?? STRATEGIES.AVALANCHE;
+
+  const forecast = useMemo(
+    () => runForecast({
+      debts, buckets, startMonth, months: HORIZON_MONTHS,
+      monthlyBudget: effectiveBudget,
+      strategy,
+    }),
+    [debts, buckets, startMonth, effectiveBudget, strategy],
+  );
+
+  const projectedRows = useMemo(() => toProjectedChartData(forecast.months, debts), [forecast, debts]);
+  const seriesSpecs = useMemo(() => projectedSeries(forecast.months, debts), [forecast, debts]);
+  const utilisationData = useMemo(() => toUtilisationChartData(forecast.months, debts), [forecast, debts]);
+
+  const hasProjectedData = projectedRows.length > 0 && seriesSpecs.length > 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle>Forecast</CardTitle>
+            <CardDescription>
+              {HORIZON_MONTHS / 12}-year projection under the{' '}
+              <span className="font-medium text-foreground">{strategy}</span> strategy at{' '}
+              <span className="font-medium text-foreground">{formatGBP(effectiveBudget)}</span>/mo.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-1 rounded-md bg-muted p-1">
+            {TABS.map((t) => (
+              <Button
+                key={t.key}
+                size="sm"
+                variant={tab === t.key ? 'default' : 'ghost'}
+                onClick={() => setTab(t.key)}
+                className="h-7 text-xs"
+              >
+                {t.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {tab === 'projected' && (
+          hasProjectedData ? (
+            <ProjectedChart rows={projectedRows} seriesSpecs={seriesSpecs} />
+          ) : (
+            <EmptyState message="No debts projected — add a debt to see the payoff trajectory." />
+          )
+        )}
+        {tab === 'utilisation' && (
+          utilisationData.eligibleDebtCount > 0 ? (
+            <UtilisationChart rows={utilisationData.rows} />
+          ) : (
+            <EmptyState message="No debts with a credit limit set. Utilisation applies to cards, store cards, and overdrafts that have a limit." />
+          )
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProjectedChart({ rows, seriesSpecs }) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={rows} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+        <XAxis
+          dataKey="month"
+          stroke="var(--color-muted-foreground)"
+          tick={{ fontSize: 11 }}
+          minTickGap={20}
+        />
+        <YAxis
+          stroke="var(--color-muted-foreground)"
+          tick={{ fontSize: 11 }}
+          tickFormatter={(v) => formatYAxisPounds(v)}
+          width={60}
+        />
+        <Tooltip
+          formatter={(value) => gbpPoundsToString(Number(value))}
+          contentStyle={tooltipStyle}
+        />
+        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+        {seriesSpecs.map((s) => (
+          <Line
+            key={s.key}
+            type="monotone"
+            dataKey={s.key}
+            stroke={s.color}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+function UtilisationChart({ rows }) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={rows} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+        <XAxis
+          dataKey="month"
+          stroke="var(--color-muted-foreground)"
+          tick={{ fontSize: 11 }}
+          minTickGap={20}
+        />
+        <YAxis
+          stroke="var(--color-muted-foreground)"
+          tick={{ fontSize: 11 }}
+          tickFormatter={(v) => `${v}%`}
+          domain={[0, (dataMax) => Math.max(100, Math.ceil(dataMax / 10) * 10)]}
+          width={50}
+        />
+        <Tooltip
+          formatter={(value) => `${Number(value).toFixed(1)}%`}
+          contentStyle={tooltipStyle}
+        />
+        <ReferenceLine y={75} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'High 75%', fontSize: 10, fill: '#ef4444', position: 'right' }} />
+        <ReferenceLine y={30} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Good 30%', fontSize: 10, fill: '#10b981', position: 'right' }} />
+        <Line
+          type="monotone"
+          dataKey="utilisation"
+          stroke="#0ea5e9"
+          strokeWidth={2}
+          dot={false}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+function EmptyState({ message }) {
+  return (
+    <div className="h-[300px] flex items-center justify-center text-sm text-muted-foreground text-center px-6">
+      {message}
+    </div>
+  );
+}
+
+const tooltipStyle = {
+  background: 'var(--color-card)',
+  border: '1px solid var(--color-border)',
+  borderRadius: '6px',
+  fontSize: 12,
+};
+
+function formatYAxisPounds(v) {
+  if (v >= 1000) return `£${Math.round(v / 1000)}k`;
+  return `£${Math.round(v)}`;
+}
+
+function gbpPoundsToString(pounds) {
+  const pennies = Math.round(pounds * 100);
+  return formatGBP(pennies);
+}
