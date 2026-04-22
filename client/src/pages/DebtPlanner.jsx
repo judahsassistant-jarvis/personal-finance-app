@@ -27,36 +27,46 @@ import StrategyComparison from '../components/debts/StrategyComparison.jsx';
 import UtilisationBar from '../components/debts/UtilisationBar.jsx';
 import PayoffProgressBar from '../components/debts/PayoffProgressBar.jsx';
 
+// Single source of truth for subtype → icon. Used for both the group
+// header (via GROUPS below) and the per-row visual badge in DebtRow.
+const SUBTYPE_ICONS = {
+  [DEBT_SUBTYPES.CARD]: CreditCard,
+  [DEBT_SUBTYPES.STORE_CARD]: ShoppingBag,
+  [DEBT_SUBTYPES.PERSONAL_LOAN]: Landmark,
+  [DEBT_SUBTYPES.BNPL]: Clock,
+  [DEBT_SUBTYPES.OVERDRAFT]: Banknote,
+};
+
 // Group spec: display order, label, icon, subtype membership test.
 const GROUPS = [
   {
     key: 'cards',
     label: 'Credit cards',
-    icon: CreditCard,
+    icon: SUBTYPE_ICONS[DEBT_SUBTYPES.CARD],
     includes: (d) => CARD_LIKE_SUBTYPES.has(d.subtype) && d.subtype !== DEBT_SUBTYPES.STORE_CARD,
   },
   {
     key: 'store',
     label: 'Store cards',
-    icon: ShoppingBag,
+    icon: SUBTYPE_ICONS[DEBT_SUBTYPES.STORE_CARD],
     includes: (d) => d.subtype === DEBT_SUBTYPES.STORE_CARD,
   },
   {
     key: 'loans',
     label: 'Loans',
-    icon: Landmark,
+    icon: SUBTYPE_ICONS[DEBT_SUBTYPES.PERSONAL_LOAN],
     includes: (d) => d.subtype === DEBT_SUBTYPES.PERSONAL_LOAN,
   },
   {
     key: 'bnpl',
     label: 'Buy now, pay later',
-    icon: Clock,
+    icon: SUBTYPE_ICONS[DEBT_SUBTYPES.BNPL],
     includes: (d) => d.subtype === DEBT_SUBTYPES.BNPL,
   },
   {
     key: 'overdrafts',
     label: 'Overdrafts',
-    icon: Banknote,
+    icon: SUBTYPE_ICONS[DEBT_SUBTYPES.OVERDRAFT],
     includes: (d) => d.subtype === DEBT_SUBTYPES.OVERDRAFT,
   },
 ];
@@ -229,12 +239,16 @@ function DebtRow({
   const dueLabel = debt.payment_due_day ? `Due day ${debt.payment_due_day}` : null;
   const isCardLike = CARD_LIKE_SUBTYPES.has(debt.subtype);
   const bucketFormOpenHere = bucketForm && bucketForm.debtId === debt.id;
+  const SubtypeIcon = SUBTYPE_ICONS[debt.subtype];
 
   return (
     <div className="py-3">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
+            {SubtypeIcon && (
+              <SubtypeIcon className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+            )}
             <span className="font-medium text-sm truncate">{debt.name}</span>
             {debt.priority && <Badge variant="warning">priority</Badge>}
             {promo && (
