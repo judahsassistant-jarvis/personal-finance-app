@@ -10,6 +10,9 @@ import {
   computeUtilisation,
   UTILISATION_THRESHOLDS,
   computePayoffProgress,
+  promoUrgency,
+  promoBadgeVariant,
+  PROMO_URGENCY_THRESHOLDS,
 } from '../debtPlannerHelpers.js';
 
 function daysFromNow(n) {
@@ -183,5 +186,50 @@ describe('computePayoffProgress', () => {
   it('exposes startingPennies so the UI can render the reference amount', () => {
     const p = computePayoffProgress({ starting_balance_pennies: 100000 }, 50000);
     expect(p.startingPennies).toBe(100000);
+  });
+});
+
+describe('promoUrgency', () => {
+  it('returns null when days is missing or non-finite', () => {
+    expect(promoUrgency(null)).toBeNull();
+    expect(promoUrgency(undefined)).toBeNull();
+    expect(promoUrgency(NaN)).toBeNull();
+  });
+
+  it('classifies within each band — inclusive upper bounds', () => {
+    expect(promoUrgency(0)).toBe('critical');
+    expect(promoUrgency(14)).toBe('critical');
+    expect(promoUrgency(15)).toBe('urgent');
+    expect(promoUrgency(30)).toBe('urgent');
+    expect(promoUrgency(31)).toBe('warning');
+    expect(promoUrgency(90)).toBe('warning');
+    expect(promoUrgency(91)).toBe('distant');
+    expect(promoUrgency(365)).toBe('distant');
+  });
+
+  it('handles already-expired (negative days) as critical — still the most urgent tier', () => {
+    expect(promoUrgency(-1)).toBe('critical');
+    expect(promoUrgency(-100)).toBe('critical');
+  });
+
+  it('exports thresholds matching the cloud function cadence (14/30/90)', () => {
+    expect(PROMO_URGENCY_THRESHOLDS.CRITICAL).toBe(14);
+    expect(PROMO_URGENCY_THRESHOLDS.URGENT).toBe(30);
+    expect(PROMO_URGENCY_THRESHOLDS.WARNING).toBe(90);
+  });
+});
+
+describe('promoBadgeVariant', () => {
+  it('maps each urgency tier to a distinct badge variant', () => {
+    expect(promoBadgeVariant(10)).toBe('destructive');
+    expect(promoBadgeVariant(25)).toBe('warning');
+    expect(promoBadgeVariant(60)).toBe('accent');
+    expect(promoBadgeVariant(200)).toBe('muted');
+  });
+
+  it('falls back to accent for unclassifiable inputs', () => {
+    // null urgency → fallback, not a crash
+    expect(promoBadgeVariant(null)).toBe('accent');
+    expect(promoBadgeVariant(undefined)).toBe('accent');
   });
 });

@@ -149,6 +149,47 @@ function bandForRatio(ratio) {
   return 'poor';
 }
 
+// Promo-cliff urgency bands. Matches the 90/60/30/14-day cadence used by
+// `generateBtCliffAlerts` (§3.4) so the UI and the Cloud Function speak the
+// same tier language — when the email fires, the card's visual state should
+// already reflect the same severity.
+export const PROMO_URGENCY_THRESHOLDS = Object.freeze({
+  CRITICAL: 14,
+  URGENT: 30,
+  WARNING: 90,
+});
+
+/**
+ * Bucket a days-remaining count into one of four urgency tiers. Returns null
+ * when days is missing so callers can render nothing cleanly.
+ *
+ *   critical: ≤ 14 days — act now (cloud function sends the 14-day email here)
+ *   urgent:   15–30 days — act soon
+ *   warning:  31–90 days — on the radar
+ *   distant:  > 90 days — heads-up only
+ */
+export function promoUrgency(days) {
+  if (days == null || !Number.isFinite(days)) return null;
+  if (days <= PROMO_URGENCY_THRESHOLDS.CRITICAL) return 'critical';
+  if (days <= PROMO_URGENCY_THRESHOLDS.URGENT) return 'urgent';
+  if (days <= PROMO_URGENCY_THRESHOLDS.WARNING) return 'warning';
+  return 'distant';
+}
+
+// Badge variant per urgency tier, used by the near-name promo badge in the
+// debt row. Kept alongside the helper so badge and detail row agree.
+const URGENCY_BADGE_VARIANT = {
+  critical: 'destructive',
+  urgent: 'warning',
+  warning: 'accent',
+  distant: 'muted',
+};
+
+export function promoBadgeVariant(days) {
+  const tier = promoUrgency(days);
+  return URGENCY_BADGE_VARIANT[tier] ?? 'accent';
+}
+
 /**
  * Payoff progress — how far an installment debt has been paid down from its
  * starting principal toward zero.

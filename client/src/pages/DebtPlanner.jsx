@@ -15,6 +15,7 @@ import {
   enrichDebt,
   computeTotals,
   byPriorityThenBalance,
+  promoBadgeVariant,
 } from './debtPlannerHelpers.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
 import { Badge } from '../components/ui/badge.jsx';
@@ -28,6 +29,7 @@ import UtilisationBar from '../components/debts/UtilisationBar.jsx';
 import PayoffProgressBar from '../components/debts/PayoffProgressBar.jsx';
 import ForecastChart from '../components/debts/ForecastChart.jsx';
 import MilestonesCard from '../components/debts/MilestonesCard.jsx';
+import PromoCliffCountdown from '../components/debts/PromoCliffCountdown.jsx';
 
 // Single source of truth for subtype → icon. Used for both the group
 // header (via GROUPS below) and the per-row visual badge in DebtRow.
@@ -256,7 +258,7 @@ function DebtRow({
             <span className="font-medium text-sm truncate">{debt.name}</span>
             {debt.priority && <Badge variant="warning">priority</Badge>}
             {promo && (
-              <Badge variant={promo.days <= 30 ? 'destructive' : 'accent'}>
+              <Badge variant={promoBadgeVariant(promo.days)}>
                 Promo ends in {promo.days}d
               </Badge>
             )}
@@ -282,6 +284,7 @@ function DebtRow({
         </div>
       </div>
 
+      {promo && <PromoCliffCountdown promo={promo} />}
       {utilisation && <UtilisationBar utilisation={utilisation} />}
       {payoffProgress && <PayoffProgressBar progress={payoffProgress} />}
 
