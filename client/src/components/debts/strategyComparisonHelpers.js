@@ -1,4 +1,4 @@
-import { STRATEGIES } from '../../firebase/schema.js';
+import { STRATEGIES, formatGBP } from '../../firebase/schema.js';
 
 /**
  * Pull the headline metrics out of a runForecast result so comparison rows
@@ -24,6 +24,54 @@ export function suggestBudgetPennies(totalMinPennies) {
   const raw = totalMinPennies * 1.5;
   const fiftyPounds = 5000; // pennies
   return Math.max(totalMinPennies, Math.round(raw / fiftyPounds) * fiftyPounds);
+}
+
+/**
+ * Convert the Dashboard's discretionary number into a Debt Planner budget.
+ *
+ * Discretionary is "money left after paying bills, minimums, and buffer this
+ * cycle" — i.e. the *extra* pool available for debt paydown. The forecast
+ * engine's `monthlyBudget` means *total* spend (minimums + extra), so we add
+ * the minimums back on top. Clamped to at least the minimums so we never feed
+ * the engine a budget that would trigger its min-scaling fallback.
+ *
+ * Returns null if discretionary isn't yet available (e.g. profile still
+ * loading) so the caller can decide how to behave.
+ */
+export function autoSuggestedBudgetFromDiscretionary(discretionaryPennies, totalMinPennies) {
+  if (discretionaryPennies == null || !Number.isFinite(discretionaryPennies)) return null;
+  if (!Number.isFinite(totalMinPennies) || totalMinPennies < 0) return null;
+  const floor = Math.max(0, totalMinPennies);
+  return Math.max(floor, totalMinPennies + Math.max(0, discretionaryPennies));
+}
+
+/**
+ * Human-readable helper text under the Monthly Budget input, explaining where
+ * the current value came from (auto-suggested vs custom vs fallback) and why.
+ */
+export function budgetHelperText({
+  autoSuggestEnabled,
+  discretionaryPennies,
+  totalMinPennies,
+  effectiveBudget,
+  hasProfile,
+}) {
+  const mins = `Total minimums: ${formatGBP(totalMinPennies)}/mo`;
+
+  if (!autoSuggestEnabled) {
+    return `${mins} · Using your saved budget`;
+  }
+  if (!hasProfile) {
+    return `${mins} · Loading Dashboard discretionary…`;
+  }
+  if (discretionaryPennies == null) {
+    return `${mins} · Auto-suggest unavailable, using fallback`;
+  }
+  if (discretionaryPennies <= 0) {
+    return `${mins} · No discretionary this cycle, covering minimums only`;
+  }
+  const discretionaryOnly = Math.max(0, effectiveBudget - totalMinPennies);
+  return `${mins} + ${formatGBP(discretionaryOnly)} discretionary (auto-suggested from Dashboard)`;
 }
 
 /**

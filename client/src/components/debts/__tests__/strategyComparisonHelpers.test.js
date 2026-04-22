@@ -3,6 +3,8 @@ import { STRATEGIES } from '../../../firebase/schema.js';
 import {
   summarisePlan,
   suggestBudgetPennies,
+  autoSuggestedBudgetFromDiscretionary,
+  budgetHelperText,
   formatMonthsDuration,
   formatPayoffMonth,
   pickWinnerStrategy,
@@ -91,6 +93,68 @@ describe('formatPayoffMonth', () => {
     expect(formatPayoffMonth('')).toBe('');
     expect(formatPayoffMonth(null)).toBe('');
     expect(formatPayoffMonth('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('autoSuggestedBudgetFromDiscretionary', () => {
+  it('returns null when discretionary is unavailable', () => {
+    expect(autoSuggestedBudgetFromDiscretionary(null, 20000)).toBe(null);
+    expect(autoSuggestedBudgetFromDiscretionary(undefined, 20000)).toBe(null);
+    expect(autoSuggestedBudgetFromDiscretionary(NaN, 20000)).toBe(null);
+  });
+
+  it('returns null when totalMin is invalid', () => {
+    expect(autoSuggestedBudgetFromDiscretionary(10000, null)).toBe(null);
+    expect(autoSuggestedBudgetFromDiscretionary(10000, -1)).toBe(null);
+  });
+
+  it('sums minimums + positive discretionary', () => {
+    // £150 mins + £200 discretionary = £350 total budget for the engine
+    expect(autoSuggestedBudgetFromDiscretionary(20000, 15000)).toBe(35000);
+  });
+
+  it('floors at the minimums when discretionary is zero or negative', () => {
+    expect(autoSuggestedBudgetFromDiscretionary(0, 15000)).toBe(15000);
+    expect(autoSuggestedBudgetFromDiscretionary(-5000, 15000)).toBe(15000);
+  });
+
+  it('handles zero minimums', () => {
+    expect(autoSuggestedBudgetFromDiscretionary(10000, 0)).toBe(10000);
+    expect(autoSuggestedBudgetFromDiscretionary(-10000, 0)).toBe(0);
+  });
+});
+
+describe('budgetHelperText', () => {
+  const base = { totalMinPennies: 15000, effectiveBudget: 35000, hasProfile: true };
+
+  it('describes the auto-suggested breakdown when discretionary is positive', () => {
+    const text = budgetHelperText({ ...base, autoSuggestEnabled: true, discretionaryPennies: 20000 });
+    expect(text).toContain('£150.00/mo');
+    expect(text).toContain('£200.00 discretionary');
+    expect(text).toContain('auto-suggested');
+  });
+
+  it('flags when there is no discretionary this cycle', () => {
+    const text = budgetHelperText({ ...base, autoSuggestEnabled: true, discretionaryPennies: 0, effectiveBudget: 15000 });
+    expect(text).toContain('No discretionary');
+    expect(text).toContain('minimums only');
+  });
+
+  it('flags loading state when profile not yet available', () => {
+    const text = budgetHelperText({ ...base, autoSuggestEnabled: true, discretionaryPennies: null, hasProfile: false });
+    expect(text).toContain('Loading');
+  });
+
+  it('flags fallback when profile loaded but discretionary unavailable', () => {
+    const text = budgetHelperText({ ...base, autoSuggestEnabled: true, discretionaryPennies: null, hasProfile: true });
+    expect(text).toContain('unavailable');
+    expect(text).toContain('fallback');
+  });
+
+  it('shows "saved budget" message when auto-suggest is off', () => {
+    const text = budgetHelperText({ ...base, autoSuggestEnabled: false, discretionaryPennies: 20000 });
+    expect(text).toContain('saved budget');
+    expect(text).not.toContain('auto-suggested');
   });
 });
 
