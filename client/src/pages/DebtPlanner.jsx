@@ -22,6 +22,7 @@ import { Button } from '../components/ui/button.jsx';
 import { Separator } from '../components/ui/separator.jsx';
 import DebtForm from '../components/debts/DebtForm.jsx';
 import BucketForm from '../components/debts/BucketForm.jsx';
+import StrategyCard from '../components/debts/StrategyCard.jsx';
 
 // Group spec: display order, label, icon, subtype membership test.
 const GROUPS = [
@@ -82,15 +83,20 @@ export default function DebtPlanner() {
     return map;
   }, [buckets]);
 
+  const allRows = useMemo(
+    () => debts.map((d) => enrichDebt(d, bucketsByDebtId.get(d.id) || [])),
+    [debts, bucketsByDebtId],
+  );
+
   const grouped = useMemo(() => {
     return GROUPS.map((group) => {
-      const rows = debts
-        .filter(group.includes)
-        .map((d) => enrichDebt(d, bucketsByDebtId.get(d.id) || []))
+      const rows = allRows
+        .filter((r) => group.includes(r.debt))
+        .slice()
         .sort(byPriorityThenBalance);
       return { ...group, rows };
     });
-  }, [debts, bucketsByDebtId]);
+  }, [allRows]);
 
   const totals = useMemo(() => computeTotals(debts, bucketsByDebtId), [debts, bucketsByDebtId]);
 
@@ -135,6 +141,8 @@ export default function DebtPlanner() {
           onClose={() => setDebtForm(null)}
         />
       )}
+
+      {debts.length > 0 && !debtForm && <StrategyCard rows={allRows} />}
 
       {debts.length === 0 && !debtForm ? (
         <Card>

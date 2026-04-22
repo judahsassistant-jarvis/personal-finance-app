@@ -130,7 +130,10 @@ export const DEFAULT_PAY_CYCLE = Object.freeze({
 export const STRATEGIES = Object.freeze({
   AVALANCHE: 'avalanche',
   SNOWBALL: 'snowball',
+  HYBRID: 'hybrid',
 });
+
+export const SMALL_BALANCE_BOOST_THRESHOLD_PENNIES = 50000;
 
 export const TIERS = Object.freeze({
   FREE: 'free',

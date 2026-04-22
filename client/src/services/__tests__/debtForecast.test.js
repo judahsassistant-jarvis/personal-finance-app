@@ -6,9 +6,10 @@ import {
   calcRevolvingMinPayment,
   getAvalancheScore,
   getSnowballScore,
+  getHybridScore,
   runForecast,
 } from '../debtForecast.js';
-import { DEBT_SUBTYPES } from '../../firebase/schema.js';
+import { DEBT_SUBTYPES, SMALL_BALANCE_BOOST_THRESHOLD_PENNIES } from '../../firebase/schema.js';
 
 // -------------------------------------------------------------------
 // Pure helpers
@@ -146,6 +147,29 @@ describe('getSnowballScore', () => {
   });
 });
 
+describe('getHybridScore', () => {
+  test('without boost, matches avalanche score', () => {
+    const big = SMALL_BALANCE_BOOST_THRESHOLD_PENNIES + 1;
+    expect(getHybridScore(0.2, 0, big)).toBe(getAvalancheScore(0.2, 0));
+  });
+
+  test('below threshold, score = avalanche + 500_000 boost', () => {
+    const small = SMALL_BALANCE_BOOST_THRESHOLD_PENNIES - 1;
+    expect(getHybridScore(0.2, 0, small)).toBeCloseTo(getAvalancheScore(0.2, 0) + 500_000, 6);
+  });
+
+  test('boosted small debt outranks a much higher-APR large debt', () => {
+    const smallScore = getHybridScore(0.05, 0, 10_000); // £100 @ 5%
+    const bigScore = getHybridScore(0.40, 0, 500_000);  // £5,000 @ 40%
+    expect(smallScore).toBeGreaterThan(bigScore);
+  });
+
+  test('at the threshold boundary (exactly £500), no boost applies', () => {
+    expect(getHybridScore(0.1, 0, SMALL_BALANCE_BOOST_THRESHOLD_PENNIES))
+      .toBe(getAvalancheScore(0.1, 0));
+  });
+});
+
 // -------------------------------------------------------------------
 // Integration
 // -------------------------------------------------------------------
@@ -244,6 +268,44 @@ describe('runForecast — snowball vs avalanche', () => {
     const bigRow = r.months[0].per_debt.find((d) => d.debt_id === 'big');
     const smallRow = r.months[0].per_debt.find((d) => d.debt_id === 'small');
     expect(smallRow.payment_pennies).toBeGreaterThan(bigRow.payment_pennies);
+  });
+});
+
+describe('runForecast — hybrid strategy', () => {
+  test('with no sub-£500 debts, behaves like avalanche (highest APR first)', () => {
+    const debts = [
+      { id: 'big', subtype: DEBT_SUBTYPES.CARD, name: 'BigHighAPR',
+        balance_pennies: 500000, standard_apr: 0.25, min_percentage: 0.02, min_floor_pennies: 2500 },
+      { id: 'mid', subtype: DEBT_SUBTYPES.CARD, name: 'MidLowAPR',
+        balance_pennies: 200000, standard_apr: 0.15, min_percentage: 0.02, min_floor_pennies: 2500 },
+    ];
+    const buckets = [
+      { id: 'big-b', debt_id: 'big', name: 'b', balance_pennies: 500000, apr: 0.25, is_promo: false },
+      { id: 'mid-b', debt_id: 'mid', name: 'b', balance_pennies: 200000, apr: 0.15, is_promo: false },
+    ];
+    const r = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 2, monthlyBudget: 30000, strategy: 'hybrid' });
+    const bigRow = r.months[0].per_debt.find((d) => d.debt_id === 'big');
+    const midRow = r.months[0].per_debt.find((d) => d.debt_id === 'mid');
+    expect(bigRow.payment_pennies).toBeGreaterThan(midRow.payment_pennies);
+  });
+
+  test('boosts a sub-£500 debt above a much higher-APR large debt', () => {
+    // Big £5,000 @ 25% APR vs Small £400 @ 10% APR.
+    // Avalanche would prioritise big. Hybrid should prioritise the small debt.
+    const debts = [
+      { id: 'big', subtype: DEBT_SUBTYPES.CARD, name: 'BigHighAPR',
+        balance_pennies: 500000, standard_apr: 0.25, min_percentage: 0.02, min_floor_pennies: 2500 },
+      { id: 'tiny', subtype: DEBT_SUBTYPES.CARD, name: 'TinyLowAPR',
+        balance_pennies: 40000, standard_apr: 0.10, min_percentage: 0.02, min_floor_pennies: 2500 },
+    ];
+    const buckets = [
+      { id: 'big-b', debt_id: 'big', name: 'b', balance_pennies: 500000, apr: 0.25, is_promo: false },
+      { id: 'tiny-b', debt_id: 'tiny', name: 'b', balance_pennies: 40000, apr: 0.10, is_promo: false },
+    ];
+    const r = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 2, monthlyBudget: 30000, strategy: 'hybrid' });
+    const bigRow = r.months[0].per_debt.find((d) => d.debt_id === 'big');
+    const tinyRow = r.months[0].per_debt.find((d) => d.debt_id === 'tiny');
+    expect(tinyRow.payment_pennies).toBeGreaterThan(bigRow.payment_pennies);
   });
 });
 

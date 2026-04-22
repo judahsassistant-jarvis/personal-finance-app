@@ -1,5 +1,5 @@
 /**
- * Debt Forecast Engine — Avalanche & Snowball strategies.
+ * Debt Forecast Engine — Avalanche, Snowball & Hybrid strategies.
  *
  * Pure function. No Firestore / no IO. The caller fetches debts + buckets and
  * passes them in; the engine returns projections. Matches Phase 1's algorithmic
@@ -27,6 +27,7 @@ import {
   CARD_LIKE_SUBTYPES,
   INSTALLMENT_SUBTYPES,
   REVOLVING_SUBTYPES,
+  SMALL_BALANCE_BOOST_THRESHOLD_PENNIES,
 } from '../firebase/schema.js';
 
 // Subtypes that allow extra (above-minimum) payment allocation.
@@ -106,6 +107,21 @@ export function getSnowballScore(remainingBalancePennies) {
   return -remainingBalancePennies;
 }
 
+/**
+ * Hybrid score: avalanche ordering with a flat boost for small-balance debts.
+ * Any debt whose total balance is under SMALL_BALANCE_BOOST_THRESHOLD_PENNIES
+ * (£500) gets a 500_000 boost — equivalent to +50% APR — which bumps
+ * quick-win debts to the front without abandoning avalanche's
+ * interest-minimising ordering for the rest.
+ *
+ * Lifted from DebtShift debt_engine.dart:527–530.
+ */
+export function getHybridScore(effectiveApr, positionIndex, totalBalancePennies) {
+  const base = getAvalancheScore(effectiveApr, positionIndex);
+  const boost = totalBalancePennies < SMALL_BALANCE_BOOST_THRESHOLD_PENNIES ? 500_000 : 0;
+  return base + boost;
+}
+
 // ---------------------------------------------------------------------------
 // Main engine
 // ---------------------------------------------------------------------------
@@ -119,7 +135,7 @@ export function getSnowballScore(remainingBalancePennies) {
  * @param {Date|string} options.startMonth - first month to project from
  * @param {number} [options.months=60]
  * @param {number|null} [options.monthlyBudget] - pennies; null = sum of minimums
- * @param {'avalanche'|'snowball'} [options.strategy]
+ * @param {'avalanche'|'snowball'|'hybrid'} [options.strategy]
  * @param {Object|null} [options.cashFlow] - optional context recorded on summary rows
  * @returns {Object} { months, payoffSchedules, cliffs, summary, debtFreeMonth }
  */
@@ -427,6 +443,12 @@ function applyPayment(cs, amount, _tag) {
   }
 }
 
+function scoreTarget(cs, bucket, strategy) {
+  if (strategy === 'snowball') return getSnowballScore(cs.totalBalance);
+  if (strategy === 'hybrid') return getHybridScore(bucket.effectiveApr || 0, bucket.position, cs.totalBalance);
+  return getAvalancheScore(bucket.effectiveApr || 0, bucket.position);
+}
+
 function buildExtraTargets(states, strategy) {
   const targets = [];
   for (const cs of states) {
@@ -437,26 +459,20 @@ function buildExtraTargets(states, strategy) {
       // Each bucket is a separate target.
       for (const b of cs.buckets) {
         if (b.balance_pennies <= 0.01) continue;
-        const score = strategy === 'snowball'
-          ? getSnowballScore(cs.totalBalance) // card balance for snowball
-          : getAvalancheScore(b.effectiveApr || 0, b.position);
         targets.push({
           cs,
           bucket: b,
-          score,
+          score: scoreTarget(cs, b, strategy),
           remainingCap: b.balance_pennies,
         });
       }
     } else {
       const b = cs.buckets[0];
       if (b.balance_pennies <= 0.01) continue;
-      const score = strategy === 'snowball'
-        ? getSnowballScore(cs.totalBalance)
-        : getAvalancheScore(b.effectiveApr || 0, b.position);
       targets.push({
         cs,
         bucket: b,
-        score,
+        score: scoreTarget(cs, b, strategy),
         remainingCap: b.balance_pennies,
       });
     }
