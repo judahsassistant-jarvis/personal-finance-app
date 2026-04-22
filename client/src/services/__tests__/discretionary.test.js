@@ -25,21 +25,33 @@ describe('computeDiscretionary — baseline', () => {
     expect(out.discretionary_pennies).toBe(0);
   });
 
-  test('only liquid accounts, no outflows → safe_to_spend = liquid', () => {
+  test('only opted-in accounts contribute to safe_to_spend', () => {
     const accounts = [
-      { liquidity: 'liquid', balance_pennies: 100000 },
-      { liquidity: 'liquid', balance_pennies: 50000 },
-      { liquidity: 'locked', balance_pennies: 9_000_000 },
+      { include_in_safe_to_spend: true, balance_pennies: 100000 },
+      { include_in_safe_to_spend: true, balance_pennies: 50000 },
+      // Big savings balance that should NOT silently inflate the budget
+      { include_in_safe_to_spend: false, balance_pennies: 9_000_000 },
     ];
     const out = computeDiscretionary({ accounts, payCycle: cycle, asOf: new Date(2026, 3, 10) });
     expect(out.liquid_pennies).toBe(150000);
     expect(out.safe_to_spend_pennies).toBe(150000);
   });
+
+  test('account missing include_in_safe_to_spend is treated as excluded', () => {
+    // Defensive: Firestore docs pre-dating the field default to excluded, not included.
+    const accounts = [
+      { balance_pennies: 100000 },            // no field
+      { include_in_safe_to_spend: false, balance_pennies: 200000 },
+      { include_in_safe_to_spend: true, balance_pennies: 50000 },
+    ];
+    const out = computeDiscretionary({ accounts, payCycle: cycle, asOf: new Date(2026, 3, 10) });
+    expect(out.liquid_pennies).toBe(50000);
+  });
 });
 
 describe('computeDiscretionary — bills subtract', () => {
   test('upcoming + missed bills reduce safe-to-spend', () => {
-    const accounts = [{ liquidity: 'liquid', balance_pennies: 200000 }];
+    const accounts = [{ include_in_safe_to_spend: true, balance_pennies: 200000 }];
     const bills = [
       { merchant: 'Netflix', expected_amount_pennies: 1399, expected_day_of_month: 5 },  // missed
       { merchant: 'Spotify', expected_amount_pennies: 999, expected_day_of_month: 18 }, // upcoming
@@ -58,7 +70,7 @@ describe('computeDiscretionary — bills subtract', () => {
 
 describe('computeDiscretionary — debt minimums', () => {
   test('card debts with min_floor contribute to pending minimums', () => {
-    const accounts = [{ liquidity: 'liquid', balance_pennies: 1_000_000 }];
+    const accounts = [{ include_in_safe_to_spend: true, balance_pennies: 1_000_000 }];
     const debts = [
       {
         id: 'd1', subtype: 'card', balance_pennies: 500000,
@@ -79,7 +91,7 @@ describe('computeDiscretionary — debt minimums', () => {
   });
 
   test('a debt payment transaction marks the minimum as paid', () => {
-    const accounts = [{ liquidity: 'liquid', balance_pennies: 1_000_000 }];
+    const accounts = [{ include_in_safe_to_spend: true, balance_pennies: 1_000_000 }];
     const debts = [{
       id: 'd1', subtype: 'card', balance_pennies: 500000,
       min_percentage: 0.02, min_floor_pennies: 2500,
@@ -95,7 +107,7 @@ describe('computeDiscretionary — debt minimums', () => {
   });
 
   test('overdraft does not contribute a required minimum', () => {
-    const accounts = [{ liquidity: 'liquid', balance_pennies: 100000 }];
+    const accounts = [{ include_in_safe_to_spend: true, balance_pennies: 100000 }];
     const debts = [{ id: 'd1', subtype: 'overdraft', balance_pennies: 50000 }];
     const out = computeDiscretionary({
       accounts, debts, payCycle: cycle, holidayCache: cache, asOf: new Date(2026, 3, 10),
@@ -106,7 +118,7 @@ describe('computeDiscretionary — debt minimums', () => {
 
 describe('computeDiscretionary — buffer', () => {
   test('buffer subtracts from safe_to_spend to yield discretionary', () => {
-    const accounts = [{ liquidity: 'liquid', balance_pennies: 100000 }];
+    const accounts = [{ include_in_safe_to_spend: true, balance_pennies: 100000 }];
     const out = computeDiscretionary({
       accounts, payCycle: cycle, holidayCache: cache, bufferPennies: 20000, asOf: new Date(2026, 3, 10),
     });
@@ -117,7 +129,7 @@ describe('computeDiscretionary — buffer', () => {
 
 describe('computeDiscretionary — expected income', () => {
   test('future-dated inflow within cycle adds to safe_to_spend', () => {
-    const accounts = [{ liquidity: 'liquid', balance_pennies: 100000 }];
+    const accounts = [{ include_in_safe_to_spend: true, balance_pennies: 100000 }];
     const transactions = [
       { merchant: 'Employer', category: 'Income', amount_pennies: 380000, date: '2026-04-27' },
     ];
@@ -130,7 +142,7 @@ describe('computeDiscretionary — expected income', () => {
   });
 
   test('past-dated inflow does not count (already reflected in balance)', () => {
-    const accounts = [{ liquidity: 'liquid', balance_pennies: 100000 }];
+    const accounts = [{ include_in_safe_to_spend: true, balance_pennies: 100000 }];
     const transactions = [
       { merchant: 'Employer', category: 'Income', amount_pennies: 380000, date: '2026-04-01' },
     ];
@@ -138,6 +150,37 @@ describe('computeDiscretionary — expected income', () => {
       accounts, transactions, payCycle: cycle, holidayCache: cache, asOf: new Date(2026, 3, 10),
     });
     expect(out.expected_income_pennies).toBe(0);
+  });
+});
+
+describe('computeDiscretionary — expected income scoped to safe-to-spend accounts', () => {
+  test('income landing in an excluded account does not count as phantom money', () => {
+    const accounts = [
+      { id: 'current', include_in_safe_to_spend: true, balance_pennies: 100000 },
+      { id: 'savings', include_in_safe_to_spend: false, balance_pennies: 9_000_000 },
+    ];
+    const transactions = [
+      { account_id: 'savings', merchant: 'Bank Interest', amount_pennies: 380000, date: '2026-04-27' },
+    ];
+    const out = computeDiscretionary({
+      accounts, transactions, payCycle: cycle, holidayCache: cache, asOf: new Date(2026, 3, 10),
+    });
+    expect(out.expected_income_pennies).toBe(0);
+    expect(out.safe_to_spend_pennies).toBe(100000);
+  });
+
+  test('income landing in a safe-to-spend account still counts', () => {
+    const accounts = [
+      { id: 'current', include_in_safe_to_spend: true, balance_pennies: 100000 },
+      { id: 'savings', include_in_safe_to_spend: false, balance_pennies: 9_000_000 },
+    ];
+    const transactions = [
+      { account_id: 'current', merchant: 'Employer', amount_pennies: 380000, date: '2026-04-27' },
+    ];
+    const out = computeDiscretionary({
+      accounts, transactions, payCycle: cycle, holidayCache: cache, asOf: new Date(2026, 3, 10),
+    });
+    expect(out.expected_income_pennies).toBe(380000);
   });
 });
 

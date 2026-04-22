@@ -56,6 +56,22 @@ export const DEFAULT_LIQUIDITY = Object.freeze({
   [ACCOUNT_SUBTYPES.PENSION]: LIQUIDITY.LOCKED,
 });
 
+// Whether the account's balance contributes to safe-to-spend / discretionary
+// by default. Independent of `liquidity` (which is about projection semantics
+// in the Forecast module). Only current accounts default to true — savings,
+// ISAs, and anything locked default to false so that long-term holdings don't
+// silently inflate the Debt Planner's auto-suggested budget. User can opt
+// others in via the Accounts page if they actively treat them as spending.
+export const DEFAULT_SAFE_TO_SPEND = Object.freeze({
+  [ACCOUNT_SUBTYPES.CURRENT]: true,
+  [ACCOUNT_SUBTYPES.SAVINGS]: false,
+  [ACCOUNT_SUBTYPES.CASH_ISA]: false,
+  [ACCOUNT_SUBTYPES.SS_ISA]: false,
+  [ACCOUNT_SUBTYPES.SIPP]: false,
+  [ACCOUNT_SUBTYPES.INVESTMENT]: false,
+  [ACCOUNT_SUBTYPES.PENSION]: false,
+});
+
 // Default annual rates by subtype (decimal, not percent). Overrideable per account.
 export const DEFAULT_RATES = Object.freeze({
   [ACCOUNT_SUBTYPES.CURRENT]: 0,
@@ -194,8 +210,9 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {string} user_id
  * @property {string} name
  * @property {string} subtype - one of ACCOUNT_SUBTYPES
- * @property {'liquid' | 'locked'} liquidity
+ * @property {'liquid' | 'locked'} liquidity - projection semantics (Forecast module); independent of safe-to-spend inclusion
  * @property {number} balance_pennies
+ * @property {boolean} include_in_safe_to_spend - whether this account contributes to Dashboard safe-to-spend + discretionary. Defaults per subtype (current=true, everything else=false); user-overrideable on the Accounts page.
  * @property {number} [interest_rate] - decimal; for savings / cash_isa
  * @property {number} [growth_rate] - decimal; for ss_isa / sipp / investment / pension
  * @property {number} [sipp_age] - qualifying age in years; for SIPP only
@@ -328,15 +345,18 @@ export function newAccountDoc({
   growth_rate,
   sipp_age,
   monthly_contribution_pennies,
+  include_in_safe_to_spend,
 }) {
   const liquidity = DEFAULT_LIQUIDITY[subtype] ?? LIQUIDITY.LIQUID;
   const rate = DEFAULT_RATES[subtype];
+  const safeToSpendDefault = DEFAULT_SAFE_TO_SPEND[subtype] ?? false;
   const doc = {
     user_id,
     name,
     subtype,
     liquidity,
     balance_pennies,
+    include_in_safe_to_spend: include_in_safe_to_spend ?? safeToSpendDefault,
     created: serverTimestamp(),
   };
   if (liquidity === LIQUIDITY.LIQUID && rate != null) {

@@ -22,7 +22,6 @@ import {
   CARD_LIKE_SUBTYPES,
   INSTALLMENT_SUBTYPES,
   REVOLVING_SUBTYPES,
-  LIQUIDITY,
 } from '../firebase/schema.js';
 
 /**
@@ -53,16 +52,23 @@ export function computeDiscretionary({
 
   const { start: cycleStart, end: cycleEnd } = getCurrentCycleBounds(asOf, payCycle, holidayCache);
 
-  // 1. Liquid balance (current snapshot from accounts).
-  const liquidPennies = accounts
-    .filter((a) => a.liquidity === LIQUIDITY.LIQUID)
+  // 1. Safe-to-spend balance: only accounts the user has opted in.
+  //    Defaults to current accounts only (per DEFAULT_SAFE_TO_SPEND in schema.js),
+  //    so savings / ISAs / investments don't silently inflate the budget.
+  const safeAccounts = accounts.filter((a) => a.include_in_safe_to_spend === true);
+  const safeAccountIds = new Set(safeAccounts.map((a) => a.id).filter(Boolean));
+  const liquidPennies = safeAccounts
     .reduce((s, a) => s + Number(a.balance_pennies || 0), 0);
 
-  // 2. Expected income: inflow transactions with dates in [now, cycleEnd).
-  //    This is conservative — only already-recorded future-dated inflows count.
-  //    A smarter version in 4d+ could use recurring-income inference.
+  // 2. Expected income: inflow transactions with dates in [now, cycleEnd),
+  //    constrained to transactions landing in safe-to-spend accounts. Income
+  //    landing in an excluded account (e.g. a future-dated interest payment to
+  //    a savings account) would otherwise count as phantom money here.
   const expectedIncomePennies = transactions
     .filter((t) => {
+      // A transaction tagged to a specific account must match a safe one.
+      // Untagged transactions (legacy or test fixtures) pass defensively.
+      if (t.account_id && !safeAccountIds.has(t.account_id)) return false;
       const d = toDate(t.date);
       if (!d) return false;
       const isInflow = Number(t.amount_pennies || 0) > 0;

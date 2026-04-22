@@ -84,12 +84,14 @@ async function seedUser() {
 }
 
 async function seedAccounts() {
+  // include_in_safe_to_spend defaults per DEFAULT_SAFE_TO_SPEND in schema.js —
+  // current-only. Savings / ISAs default off; user opts in via Accounts page.
   const accounts = [
-    { name: 'Current Account', subtype: 'current', liquidity: 'liquid', balance_pennies: 145000 },
-    { name: 'Savings', subtype: 'savings', liquidity: 'liquid', balance_pennies: 350000, interest_rate: 0.045 },
-    { name: 'Cash ISA', subtype: 'cash_isa', liquidity: 'liquid', balance_pennies: 1200000, interest_rate: 0.05 },
-    { name: 'Stocks & Shares ISA', subtype: 'ss_isa', liquidity: 'locked', balance_pennies: 2800000, growth_rate: 0.055, monthly_contribution_pennies: 20000 },
-    { name: 'SIPP', subtype: 'sipp', liquidity: 'locked', balance_pennies: 4500000, growth_rate: 0.055, sipp_age: 58, monthly_contribution_pennies: 30000 },
+    { name: 'Current Account', subtype: 'current', liquidity: 'liquid', balance_pennies: 145000, include_in_safe_to_spend: true },
+    { name: 'Savings', subtype: 'savings', liquidity: 'liquid', balance_pennies: 350000, interest_rate: 0.045, include_in_safe_to_spend: false },
+    { name: 'Cash ISA', subtype: 'cash_isa', liquidity: 'liquid', balance_pennies: 1200000, interest_rate: 0.05, include_in_safe_to_spend: false },
+    { name: 'Stocks & Shares ISA', subtype: 'ss_isa', liquidity: 'locked', balance_pennies: 2800000, growth_rate: 0.055, monthly_contribution_pennies: 20000, include_in_safe_to_spend: false },
+    { name: 'SIPP', subtype: 'sipp', liquidity: 'locked', balance_pennies: 4500000, growth_rate: 0.055, sipp_age: 58, monthly_contribution_pennies: 30000, include_in_safe_to_spend: false },
   ];
   const ids = {};
   for (const a of accounts) {
