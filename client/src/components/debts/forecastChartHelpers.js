@@ -1,9 +1,18 @@
 import { penniesToPounds } from '../../firebase/schema.js';
 
-// Fixed palette for per-debt lines. Deliberately varied in hue so 5+ debts
-// don't blur together. Ordered so the first few (your biggest debts) get the
-// most distinct colours. If you ever exceed LINE_COLORS.length debts, we
-// cycle — the visual gets noisier but doesn't break.
+// Fixed palette for per-debt lines. All Tailwind 500-level so the palette
+// stays stylistically consistent with the rest of the app. Ordered so the
+// first handful get the most perceptually-distinct colours — your biggest
+// (top-of-legend) debts land on sky, orange, violet, emerald first, which
+// sit across the hue wheel from each other.
+//
+// Twelve entries picked to cover 10+ debts (Judah's credit-card-heavy case)
+// without cycling. Hue progression: red-orange-amber-yellow-lime-emerald-
+// teal-sky-indigo-violet-fuchsia-pink. Adjacent warms (orange/amber/yellow)
+// and cools (teal/sky/indigo) sit close in hue but are distinguishable at
+// line-weight on a white background.
+//
+// Debts beyond 12 cycle — the visual gets noisier but doesn't break.
 export const LINE_COLORS = [
   '#0ea5e9', // sky-500
   '#f97316', // orange-500
@@ -13,6 +22,10 @@ export const LINE_COLORS = [
   '#eab308', // yellow-500
   '#14b8a6', // teal-500
   '#ec4899', // pink-500
+  '#6366f1', // indigo-500
+  '#84cc16', // lime-500
+  '#d946ef', // fuchsia-500
+  '#f59e0b', // amber-500
 ];
 
 /**
