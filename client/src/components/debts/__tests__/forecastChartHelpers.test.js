@@ -3,7 +3,7 @@ import {
   toProjectedChartData,
   projectedSeries,
   toUtilisationChartData,
-  toActualChartData,
+  toActualVsProjectedChartData,
   toSavingsChartData,
   shortMonth,
   LINE_COLORS,
@@ -146,7 +146,7 @@ describe('toUtilisationChartData', () => {
   });
 });
 
-describe('toActualChartData', () => {
+describe('toActualVsProjectedChartData', () => {
   const debts = [
     { id: 'd1', name: 'Zopa' },
     { id: 'd2', name: 'Klarna' },
@@ -166,70 +166,78 @@ describe('toActualChartData', () => {
     ]},
   ];
 
-  it('returns the base projected rows when no snapshots are provided', () => {
-    const out = toActualChartData(months, debts, []);
+  it('returns one row per forecast month when no snapshots are provided', () => {
+    const out = toActualVsProjectedChartData(months, debts, []);
     expect(out).toHaveLength(3);
-    expect(out[0]).not.toHaveProperty('Zopa_actual');
+    // All rows should have projected values, none should have actuals.
+    expect(out[0]).toHaveProperty('Zopa_projected', 5000);
+    expect(out.every((r) => !('Zopa_actual' in r))).toBe(true);
   });
 
-  it('attaches `${name}_actual` only to the row the snapshot falls in', () => {
+  it('creates a past row for a snapshot month that precedes the forecast', () => {
+    // Seeded snapshot in March — forecast starts in May.
+    const marchMs = new Date('2026-03-20').getTime();
+    const snapshots = [{ debt_id: 'd1', as_of_date: marchMs, balance_pennies: 550000 }];
+    const out = toActualVsProjectedChartData(months, debts, snapshots);
+    expect(out).toHaveLength(4); // Mar '26 added to the left
+    expect(out[0].month).toBe("Mar '26");
+    expect(out[0].Zopa_actual).toBe(5500);
+    // March has no projected data — the forecast hasn't started yet.
+    expect(out[0]).not.toHaveProperty('Zopa_projected');
+    // The May forecast row is untouched by snapshots.
+    expect(out[1]).not.toHaveProperty('Zopa_actual');
+    expect(out[1].Zopa_projected).toBe(5000);
+  });
+
+  it('attaches `${name}_actual` only to the snapshot month on each debt', () => {
     const mayMs = new Date('2026-05-15').getTime();
     const snapshots = [{ debt_id: 'd1', as_of_date: mayMs, balance_pennies: 490000 }];
-    const out = toActualChartData(months, debts, snapshots);
-    expect(out[0]).toHaveProperty('Zopa_actual', 4900); // pennies → pounds
+    const out = toActualVsProjectedChartData(months, debts, snapshots);
+    expect(out[0].Zopa_actual).toBe(4900);
+    expect(out[0].Zopa_projected).toBe(5000); // both present → lines meet here
     expect(out[1]).not.toHaveProperty('Zopa_actual');
     expect(out[2]).not.toHaveProperty('Zopa_actual');
-    // Klarna untouched throughout
+    // Klarna had no snapshot — only projected.
     expect(out.every((r) => !('Klarna_actual' in r))).toBe(true);
+    expect(out[0].Klarna_projected).toBe(600);
   });
 
-  it('uses the latest snapshot when multiple fall in the same row', () => {
+  it('uses the latest snapshot when multiple fall in the same month', () => {
     const early = new Date('2026-05-03').getTime();
     const late  = new Date('2026-05-28').getTime();
     const snapshots = [
       { debt_id: 'd1', as_of_date: early, balance_pennies: 510000 },
       { debt_id: 'd1', as_of_date: late,  balance_pennies: 495000 },
     ];
-    const out = toActualChartData(months, debts, snapshots);
+    const out = toActualVsProjectedChartData(months, debts, snapshots);
     expect(out[0].Zopa_actual).toBe(4950);
   });
 
-  it('clamps a snapshot dated just before the forecast start to row 0', () => {
-    // Common case: pay-cycle-aligned forecast starts late in the calendar
-    // month, but the user recorded a statement a week earlier. That snapshot
-    // is still "current cycle" data and should show as the month-0 actual.
-    const justBefore = new Date('2026-04-28').getTime(); // before the May row
-    const snapshots = [{ debt_id: 'd1', as_of_date: justBefore, balance_pennies: 510000 }];
-    const out = toActualChartData(months, debts, snapshots);
-    expect(out[0].Zopa_actual).toBe(5100);
-    expect(out[1]).not.toHaveProperty('Zopa_actual');
-  });
-
-  it('clamps a much-earlier snapshot to row 0 too (latest authoritative balance wins)', () => {
-    const oldSnap = new Date('2025-10-15').getTime(); // months before
-    const snapshots = [{ debt_id: 'd1', as_of_date: oldSnap, balance_pennies: 600000 }];
-    const out = toActualChartData(months, debts, snapshots);
+  it('creates a row for each distinct snapshot month even if no forecast row exists there', () => {
+    const jan = new Date('2026-01-20').getTime();
+    const feb = new Date('2026-02-20').getTime();
+    const snapshots = [
+      { debt_id: 'd1', as_of_date: jan, balance_pennies: 600000 },
+      { debt_id: 'd1', as_of_date: feb, balance_pennies: 570000 },
+    ];
+    const out = toActualVsProjectedChartData(months, debts, snapshots);
+    expect(out).toHaveLength(5); // Jan + Feb + May + Jun + Jul
+    expect(out[0].month).toBe("Jan '26");
     expect(out[0].Zopa_actual).toBe(6000);
-  });
-
-  it('assigns snapshots after the last forecast row to the last row', () => {
-    const future = new Date('2026-12-31').getTime();
-    const snapshots = [{ debt_id: 'd1', as_of_date: future, balance_pennies: 100000 }];
-    const out = toActualChartData(months, debts, snapshots);
-    expect(out[2].Zopa_actual).toBe(1000);
-    expect(out[1]).not.toHaveProperty('Zopa_actual');
+    expect(out[1].month).toBe("Feb '26");
+    expect(out[1].Zopa_actual).toBe(5700);
   });
 
   it('ignores snapshots whose debt_id is not in the debts list', () => {
     const mayMs = new Date('2026-05-15').getTime();
     const snapshots = [{ debt_id: 'ghost', as_of_date: mayMs, balance_pennies: 999999 }];
-    const out = toActualChartData(months, debts, snapshots);
+    const out = toActualVsProjectedChartData(months, debts, snapshots);
     expect(out[0]).not.toHaveProperty('ghost_actual');
     expect(out[0]).not.toHaveProperty('Zopa_actual');
   });
 
-  it('returns an empty array for empty forecast input', () => {
-    expect(toActualChartData([], debts, [])).toEqual([]);
+  it('returns an empty array for empty forecast + empty snapshots', () => {
+    expect(toActualVsProjectedChartData([], debts, [])).toEqual([]);
   });
 });
 

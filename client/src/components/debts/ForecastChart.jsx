@@ -20,7 +20,7 @@ import {
   toProjectedChartData,
   projectedSeries,
   toUtilisationChartData,
-  toActualChartData,
+  toActualVsProjectedChartData,
   toSavingsChartData,
 } from './forecastChartHelpers.js';
 
@@ -103,7 +103,7 @@ export default function ForecastChart({ debts, buckets }) {
   const seriesSpecs = useMemo(() => projectedSeries(forecast.months, debts), [forecast, debts]);
   const utilisationData = useMemo(() => toUtilisationChartData(forecast.months, debts), [forecast, debts]);
   const actualRows = useMemo(
-    () => toActualChartData(forecast.months, debts, snapshots),
+    () => toActualVsProjectedChartData(forecast.months, debts, snapshots),
     [forecast, debts, snapshots],
   );
   const savingsRows = useMemo(
@@ -256,64 +256,71 @@ function UtilisationChart({ rows }) {
 
 function ActualChart({ rows, seriesSpecs }) {
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={rows} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-        <XAxis
-          dataKey="month"
-          stroke="var(--color-muted-foreground)"
-          tick={{ fontSize: 11 }}
-          minTickGap={20}
-        />
-        <YAxis
-          stroke="var(--color-muted-foreground)"
-          tick={{ fontSize: 11 }}
-          tickFormatter={(v) => formatYAxisPounds(v)}
-          width={60}
-        />
-        <Tooltip
-          formatter={(value, name) => [
-            gbpPoundsToString(Number(value)),
-            typeof name === 'string' && name.endsWith('_actual')
-              ? `${name.replace(/_actual$/, '')} (actual)`
-              : name,
-          ]}
-          contentStyle={tooltipStyle}
-        />
-        <Legend
-          wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-          formatter={(value) =>
-            typeof value === 'string' && value.endsWith('_actual')
-              ? `${value.replace(/_actual$/, '')} (actual)`
-              : value
-          }
-        />
-        {seriesSpecs.map((s) => (
-          <Line
-            key={s.key}
-            type="monotone"
-            dataKey={s.key}
-            stroke={s.color}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
+    <div>
+      <div className="text-xs text-muted-foreground mb-2">
+        Solid = recorded statement balances. Dashed = projected from the latest balance forward.
+      </div>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={rows} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+          <XAxis
+            dataKey="month"
+            stroke="var(--color-muted-foreground)"
+            tick={{ fontSize: 11 }}
+            minTickGap={20}
           />
-        ))}
-        {seriesSpecs.map((s) => (
-          <Line
-            key={`${s.key}_actual`}
-            type="monotone"
-            dataKey={`${s.key}_actual`}
-            stroke={s.color}
-            strokeWidth={0}
-            dot={{ r: 4, strokeWidth: 2, fill: 'var(--color-background)', stroke: s.color }}
-            connectNulls={false}
-            isAnimationActive={false}
-            legendType="circle"
+          <YAxis
+            stroke="var(--color-muted-foreground)"
+            tick={{ fontSize: 11 }}
+            tickFormatter={(v) => formatYAxisPounds(v)}
+            width={60}
           />
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
+          <Tooltip
+            formatter={(value, name) => [
+              gbpPoundsToString(Number(value)),
+              typeof name === 'string' && name.endsWith('_projected')
+                ? `${name.replace(/_projected$/, '')} (projected)`
+                : typeof name === 'string' && name.endsWith('_actual')
+                  ? `${name.replace(/_actual$/, '')} (actual)`
+                  : name,
+            ]}
+            contentStyle={tooltipStyle}
+          />
+          <Legend
+            wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+            formatter={(value) =>
+              typeof value === 'string' ? value.replace(/_actual$/, '') : value
+            }
+          />
+          {seriesSpecs.map((s) => (
+            <Line
+              key={`${s.key}_actual`}
+              type="monotone"
+              dataKey={`${s.key}_actual`}
+              stroke={s.color}
+              strokeWidth={2}
+              dot={{ r: 3, fill: s.color, stroke: s.color }}
+              connectNulls
+              isAnimationActive={false}
+            />
+          ))}
+          {seriesSpecs.map((s) => (
+            <Line
+              key={`${s.key}_projected`}
+              type="monotone"
+              dataKey={`${s.key}_projected`}
+              stroke={s.color}
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+              legendType="none"
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 

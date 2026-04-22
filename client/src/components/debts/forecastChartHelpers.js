@@ -93,52 +93,78 @@ export function toUtilisationChartData(months, debts) {
 }
 
 /**
- * Merge balance snapshots onto the Projected chart rows so the Actual tab
- * can render dots per debt at the months where a snapshot was recorded.
- * Each debt gets a second key `${name}_actual` whose value is the snapshot
- * balance (in pounds), only present on months where that debt had a snapshot
- * — other months carry no key so Recharts can skip the dot.
+ * Build chart rows for the Actual-vs-Projected tab, treating each debt's
+ * history as a single trajectory that transitions from actuals (past, solid)
+ * to projected (future, dashed) at the forecast start.
  *
- * If multiple snapshots for the same debt fall in the same forecast month,
- * the latest one wins (so "20 Apr statement" beats "02 Apr statement").
+ * Timeline = every distinct YYYY-MM that has either a snapshot or a forecast
+ * row, sorted chronologically. Per row, per debt:
+ *   - `${name}_actual`    — latest snapshot balance in this month (if any)
+ *   - `${name}_projected` — forecast ending balance for this month (if any)
+ *
+ * The chart component renders two Lines per debt sharing a colour: solid for
+ * the actual series, dashed for the projected. Where both have a value in
+ * the same month the lines meet visually — that's the transition point.
+ *
+ * When multiple snapshots for the same debt fall in the same month, the
+ * latest one wins (so "20 Apr statement" beats "02 Apr statement").
  */
-export function toActualChartData(months, debts, snapshots) {
-  const rows = toProjectedChartData(months, debts);
-  if (rows.length === 0 || !Array.isArray(snapshots) || snapshots.length === 0) return rows;
-
-  const nameById = new Map(debts.map((d) => [d.id, d.name]));
-  // Bucket snapshots into forecast rows using each row's start ms as the
-  // boundary: a snapshot belongs to the latest row whose start ≤ snapshot.
-  const forecastMonthMs = months.map((m) => parseMonthLabelToMs(m.month));
-
-  // Per-debt, per-month → latest snapshot balance so far in that month.
-  // We keep { ms, pennies } and overwrite when a later snapshot arrives in
-  // the same bucket.
-  const bestByKey = new Map();
-  for (const s of snapshots) {
-    const debtName = nameById.get(s.debt_id);
-    if (!debtName) continue;
-    const snapMs = toMillisLoose(s.as_of_date);
-    if (!snapMs) continue;
-    const rowIndex = bucketIndex(snapMs, forecastMonthMs);
-    if (rowIndex < 0) continue;
-    const key = `${rowIndex}|${debtName}`;
-    const existing = bestByKey.get(key);
-    if (!existing || snapMs > existing.ms) {
-      bestByKey.set(key, { ms: snapMs, pennies: Number(s.balance_pennies || 0) });
+export function toActualVsProjectedChartData(months, debts, snapshots) {
+  // Per-debt, per-YYYY-MM → latest snapshot balance in that month.
+  const snapByKey = new Map();
+  for (const s of snapshots || []) {
+    const ms = toMillisLoose(s.as_of_date);
+    if (!ms) continue;
+    const ym = yearMonth(new Date(ms));
+    const key = `${s.debt_id}|${ym}`;
+    const existing = snapByKey.get(key);
+    if (!existing || ms > existing.ms) {
+      snapByKey.set(key, { ms, pennies: Number(s.balance_pennies || 0) });
     }
   }
 
-  // Attach `${name}_actual` values onto the chart rows.
-  return rows.map((row, rowIndex) => {
-    const withActuals = { ...row };
-    for (const debt of debts) {
-      const key = `${rowIndex}|${debt.name}`;
-      const snap = bestByKey.get(key);
-      if (snap) withActuals[`${debt.name}_actual`] = snap.pennies / 100;
+  // YYYY-MM → forecast month row, for quick lookup during row assembly.
+  const forecastByYm = new Map();
+  for (const m of months || []) {
+    const ms = parseMonthLabelToMs(m.month);
+    if (!ms) continue;
+    forecastByYm.set(yearMonth(new Date(ms)), m);
+  }
+
+  // All months that need a row: every snapshot month + every forecast month.
+  const allMonths = new Set([...snapByKey.keys()].map((k) => k.split('|')[1]));
+  for (const ym of forecastByYm.keys()) allMonths.add(ym);
+  const sortedYms = Array.from(allMonths).sort();
+
+  // Build the rows. The label uses shortMonth's YY format to match the
+  // Projected + Utilisation tabs so users don't see two date conventions
+  // across the four tabs.
+  const rows = sortedYms.map((ym) => {
+    const row = { month: shortMonthFromYm(ym) };
+    for (const debt of debts || []) {
+      const snap = snapByKey.get(`${debt.id}|${ym}`);
+      if (snap) row[`${debt.name}_actual`] = snap.pennies / 100;
+      const fm = forecastByYm.get(ym);
+      if (fm) {
+        const pd = (fm.per_debt || []).find((p) => p.debt_id === debt.id);
+        if (pd) row[`${debt.name}_projected`] = Number(pd.ending_pennies || 0) / 100;
+      }
     }
-    return withActuals;
+    return row;
   });
+  return rows;
+}
+
+function yearMonth(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function shortMonthFromYm(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return ym;
+  const d = new Date(y, m - 1, 1);
+  const mon = d.toLocaleDateString('en-GB', { month: 'short' });
+  return `${mon} '${String(y).slice(-2)}`;
 }
 
 // Convert whatever date shape is on forecast.months (ISO string, Date, Timestamp)
@@ -164,23 +190,6 @@ function toMillisLoose(d) {
   if (typeof d.toDate === 'function') return d.toDate().getTime();
   if (typeof d.seconds === 'number') return d.seconds * 1000;
   return 0;
-}
-
-// Given an array of forecast-month start-ms and a snapshot timestamp, return
-// the index of the forecast row the snapshot belongs to (the latest row
-// whose start ≤ snapshot). A snapshot taken a few days before the forecast
-// start (common: pay-cycle-aligned forecasts start late in the calendar
-// month, but statements are dated across the whole month) clamps to row 0 —
-// that's the current cycle from the user's perspective, and dropping it
-// would hide the only actual data we have.
-function bucketIndex(snapMs, forecastMonthMs) {
-  if (!Number.isFinite(snapMs) || snapMs <= 0) return -1;
-  if (forecastMonthMs.length === 0) return -1;
-  if (snapMs < forecastMonthMs[0]) return 0;
-  for (let i = forecastMonthMs.length - 1; i >= 0; i--) {
-    if (snapMs >= forecastMonthMs[i]) return i;
-  }
-  return -1;
 }
 
 /**
