@@ -92,6 +92,117 @@ export function toUtilisationChartData(months, debts) {
   return { rows, eligibleDebtCount: limited.length };
 }
 
+/**
+ * Merge balance snapshots onto the Projected chart rows so the Actual tab
+ * can render dots per debt at the months where a snapshot was recorded.
+ * Each debt gets a second key `${name}_actual` whose value is the snapshot
+ * balance (in pounds), only present on months where that debt had a snapshot
+ * — other months carry no key so Recharts can skip the dot.
+ *
+ * If multiple snapshots for the same debt fall in the same forecast month,
+ * the latest one wins (so "20 Apr statement" beats "02 Apr statement").
+ */
+export function toActualChartData(months, debts, snapshots) {
+  const rows = toProjectedChartData(months, debts);
+  if (rows.length === 0 || !Array.isArray(snapshots) || snapshots.length === 0) return rows;
+
+  const nameById = new Map(debts.map((d) => [d.id, d.name]));
+  // Bucket snapshots into forecast rows using each row's start ms as the
+  // boundary: a snapshot belongs to the latest row whose start ≤ snapshot.
+  const forecastMonthMs = months.map((m) => parseMonthLabelToMs(m.month));
+
+  // Per-debt, per-month → latest snapshot balance so far in that month.
+  // We keep { ms, pennies } and overwrite when a later snapshot arrives in
+  // the same bucket.
+  const bestByKey = new Map();
+  for (const s of snapshots) {
+    const debtName = nameById.get(s.debt_id);
+    if (!debtName) continue;
+    const snapMs = toMillisLoose(s.as_of_date);
+    if (!snapMs) continue;
+    const rowIndex = bucketIndex(snapMs, forecastMonthMs);
+    if (rowIndex < 0) continue;
+    const key = `${rowIndex}|${debtName}`;
+    const existing = bestByKey.get(key);
+    if (!existing || snapMs > existing.ms) {
+      bestByKey.set(key, { ms: snapMs, pennies: Number(s.balance_pennies || 0) });
+    }
+  }
+
+  // Attach `${name}_actual` values onto the chart rows.
+  return rows.map((row, rowIndex) => {
+    const withActuals = { ...row };
+    for (const debt of debts) {
+      const key = `${rowIndex}|${debt.name}`;
+      const snap = bestByKey.get(key);
+      if (snap) withActuals[`${debt.name}_actual`] = snap.pennies / 100;
+    }
+    return withActuals;
+  });
+}
+
+// Convert whatever date shape is on forecast.months (ISO string, Date, Timestamp)
+// to epoch millis. Deliberately permissive — the engine owns the canonical
+// shape but chart data may flow in from tests with different shapes.
+function parseMonthLabelToMs(label) {
+  if (label instanceof Date) return label.getTime();
+  if (typeof label === 'string') {
+    const t = new Date(label).getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+  return 0;
+}
+
+function toMillisLoose(d) {
+  if (!d) return 0;
+  if (typeof d === 'number') return Number.isFinite(d) ? d : 0;
+  if (d instanceof Date) return d.getTime();
+  if (typeof d === 'string') {
+    const t = new Date(d).getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+  if (typeof d.toDate === 'function') return d.toDate().getTime();
+  if (typeof d.seconds === 'number') return d.seconds * 1000;
+  return 0;
+}
+
+// Given an array of forecast-month start-ms and a snapshot timestamp, return
+// the index of the forecast row the snapshot belongs to (the latest row
+// whose start ≤ snapshot). -1 if before all rows; last row if after all.
+function bucketIndex(snapMs, forecastMonthMs) {
+  if (!Number.isFinite(snapMs) || snapMs <= 0) return -1;
+  if (forecastMonthMs.length === 0) return -1;
+  if (snapMs < forecastMonthMs[0]) return -1;
+  for (let i = forecastMonthMs.length - 1; i >= 0; i--) {
+    if (snapMs >= forecastMonthMs[i]) return i;
+  }
+  return -1;
+}
+
+/**
+ * Savings-tab chart data: cumulative interest saved vs a min-only baseline,
+ * month by month. The min-only forecast usually runs longer than the active
+ * plan, so we align on the active plan's month count; any min-only months
+ * beyond that are omitted (the active plan already reached debt-free).
+ */
+export function toSavingsChartData(planMonths, minOnlyMonths) {
+  if (!Array.isArray(planMonths) || planMonths.length === 0) return [];
+  const rows = [];
+  let planCum = 0;
+  let minCum = 0;
+  for (let i = 0; i < planMonths.length; i++) {
+    planCum += Number(planMonths[i].interest_pennies || 0);
+    const mm = minOnlyMonths?.[i];
+    if (mm) minCum += Number(mm.interest_pennies || 0);
+    const savedPennies = Math.max(0, minCum - planCum);
+    rows.push({
+      month: shortMonth(planMonths[i].month),
+      savedPounds: savedPennies / 100,
+    });
+  }
+  return rows;
+}
+
 /** "2026-05-01" → "May '26". Recharts shows this on the X axis. */
 export function shortMonth(monthLabel) {
   if (typeof monthLabel !== 'string' || monthLabel.length < 7) return monthLabel ?? '';

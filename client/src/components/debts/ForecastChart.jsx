@@ -12,6 +12,7 @@ import { fetchAccounts } from '../../store/accountsSlice.js';
 import { fetchTransactions } from '../../store/transactionsSlice.js';
 import { fetchRecurringBills } from '../../store/recurringBillsSlice.js';
 import { fetchBankHolidays } from '../../store/systemSlice.js';
+import { fetchBalanceSnapshots } from '../../store/balanceSnapshotsSlice.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card.jsx';
 import { Button } from '../ui/button.jsx';
 import { pickEffectiveBudget, getForecastStartMonth } from './strategyComparisonHelpers.js';
@@ -19,6 +20,8 @@ import {
   toProjectedChartData,
   projectedSeries,
   toUtilisationChartData,
+  toActualChartData,
+  toSavingsChartData,
 } from './forecastChartHelpers.js';
 
 const HORIZON_MONTHS = 120; // 10 years — enough for most payoffs to complete
@@ -26,6 +29,8 @@ const HORIZON_MONTHS = 120; // 10 years — enough for most payoffs to complete
 const TABS = [
   { key: 'projected', label: 'Projected' },
   { key: 'utilisation', label: 'Utilisation' },
+  { key: 'actual', label: 'Actual vs projected' },
+  { key: 'savings', label: 'Interest saved' },
 ];
 
 export default function ForecastChart({ debts, buckets }) {
@@ -36,6 +41,7 @@ export default function ForecastChart({ debts, buckets }) {
   const bills = useSelector((s) => s.recurringBills.items);
   const transactions = useSelector((s) => s.transactions.items);
   const bankHolidays = useSelector((s) => s.system.bankHolidays);
+  const snapshots = useSelector((s) => s.balanceSnapshots.items);
 
   const [tab, setTab] = useState('projected');
 
@@ -45,6 +51,7 @@ export default function ForecastChart({ debts, buckets }) {
     dispatch(fetchTransactions());
     dispatch(fetchRecurringBills());
     dispatch(fetchBankHolidays());
+    dispatch(fetchBalanceSnapshots());
   }, [dispatch]);
 
   const startMonth = useMemo(
@@ -55,11 +62,12 @@ export default function ForecastChart({ debts, buckets }) {
   // Mirror StrategyComparison's effective-budget logic: auto-suggest from
   // discretionary when the toggle is on, otherwise fall back to the saved
   // budget, otherwise the rule-of-thumb heuristic.
-  const totalMinPennies = useMemo(() => {
-    const minOnly = runForecast({ debts, buckets, startMonth, months: HORIZON_MONTHS, minOnly: true });
-    const firstRow = minOnly.months[0];
-    return firstRow ? firstRow.minimum_payments_pennies : 0;
-  }, [debts, buckets, startMonth]);
+  // Min-only baseline — shared across the budget calc and the Savings tab.
+  const minOnlyResult = useMemo(
+    () => runForecast({ debts, buckets, startMonth, months: HORIZON_MONTHS, minOnly: true }),
+    [debts, buckets, startMonth],
+  );
+  const totalMinPennies = minOnlyResult.months[0]?.minimum_payments_pennies ?? 0;
 
   const discretionaryCalc = useMemo(() => {
     if (!profile) return null;
@@ -94,8 +102,21 @@ export default function ForecastChart({ debts, buckets }) {
   const projectedRows = useMemo(() => toProjectedChartData(forecast.months, debts), [forecast, debts]);
   const seriesSpecs = useMemo(() => projectedSeries(forecast.months, debts), [forecast, debts]);
   const utilisationData = useMemo(() => toUtilisationChartData(forecast.months, debts), [forecast, debts]);
+  const actualRows = useMemo(
+    () => toActualChartData(forecast.months, debts, snapshots),
+    [forecast, debts, snapshots],
+  );
+  const savingsRows = useMemo(
+    () => toSavingsChartData(forecast.months, minOnlyResult.months),
+    [forecast, minOnlyResult],
+  );
 
   const hasProjectedData = projectedRows.length > 0 && seriesSpecs.length > 0;
+  const hasSnapshots = snapshots.some((s) => debts.some((d) => d.id === s.debt_id));
+  const savingsFinalPennies = useMemo(() => {
+    const last = savingsRows[savingsRows.length - 1];
+    return last ? Math.round(last.savedPounds * 100) : 0;
+  }, [savingsRows]);
 
   return (
     <Card>
@@ -137,6 +158,20 @@ export default function ForecastChart({ debts, buckets }) {
             <UtilisationChart rows={utilisationData.rows} />
           ) : (
             <EmptyState message="No debts with a credit limit set. Utilisation applies to cards, store cards, and overdrafts that have a limit." />
+          )
+        )}
+        {tab === 'actual' && (
+          hasProjectedData && hasSnapshots ? (
+            <ActualChart rows={actualRows} seriesSpecs={seriesSpecs} />
+          ) : (
+            <EmptyState message="Record a statement balance on any debt (via the button on its row) and the dots will appear here against the projected line." />
+          )
+        )}
+        {tab === 'savings' && (
+          savingsRows.length > 0 ? (
+            <SavingsChart rows={savingsRows} finalSavedPennies={savingsFinalPennies} />
+          ) : (
+            <EmptyState message="No debts to project — add a debt to see cumulative interest saved vs the minimum-only baseline." />
           )
         )}
       </CardContent>
@@ -216,6 +251,117 @@ function UtilisationChart({ rows }) {
         />
       </LineChart>
     </ResponsiveContainer>
+  );
+}
+
+function ActualChart({ rows, seriesSpecs }) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={rows} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+        <XAxis
+          dataKey="month"
+          stroke="var(--color-muted-foreground)"
+          tick={{ fontSize: 11 }}
+          minTickGap={20}
+        />
+        <YAxis
+          stroke="var(--color-muted-foreground)"
+          tick={{ fontSize: 11 }}
+          tickFormatter={(v) => formatYAxisPounds(v)}
+          width={60}
+        />
+        <Tooltip
+          formatter={(value, name) => [
+            gbpPoundsToString(Number(value)),
+            typeof name === 'string' && name.endsWith('_actual')
+              ? `${name.replace(/_actual$/, '')} (actual)`
+              : name,
+          ]}
+          contentStyle={tooltipStyle}
+        />
+        <Legend
+          wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+          formatter={(value) =>
+            typeof value === 'string' && value.endsWith('_actual')
+              ? `${value.replace(/_actual$/, '')} (actual)`
+              : value
+          }
+        />
+        {seriesSpecs.map((s) => (
+          <Line
+            key={s.key}
+            type="monotone"
+            dataKey={s.key}
+            stroke={s.color}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        ))}
+        {seriesSpecs.map((s) => (
+          <Line
+            key={`${s.key}_actual`}
+            type="monotone"
+            dataKey={`${s.key}_actual`}
+            stroke={s.color}
+            strokeWidth={0}
+            dot={{ r: 4, strokeWidth: 2, fill: 'var(--color-background)', stroke: s.color }}
+            connectNulls={false}
+            isAnimationActive={false}
+            legendType="circle"
+          />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+function SavingsChart({ rows, finalSavedPennies }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground mb-2">
+        Running total of interest avoided by following the active plan instead of minimums only.
+        {finalSavedPennies > 0 && (
+          <>
+            {' '}End of horizon:{' '}
+            <span className="text-positive font-medium tabular-nums">
+              £{(finalSavedPennies / 100).toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+            </span>
+            {' '}saved.
+          </>
+        )}
+      </div>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={rows} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+          <XAxis
+            dataKey="month"
+            stroke="var(--color-muted-foreground)"
+            tick={{ fontSize: 11 }}
+            minTickGap={20}
+          />
+          <YAxis
+            stroke="var(--color-muted-foreground)"
+            tick={{ fontSize: 11 }}
+            tickFormatter={(v) => formatYAxisPounds(v)}
+            width={60}
+          />
+          <Tooltip
+            formatter={(value) => [gbpPoundsToString(Number(value)), 'Interest saved']}
+            contentStyle={tooltipStyle}
+          />
+          <Line
+            type="monotone"
+            dataKey="savedPounds"
+            stroke="var(--color-positive)"
+            strokeWidth={2}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 

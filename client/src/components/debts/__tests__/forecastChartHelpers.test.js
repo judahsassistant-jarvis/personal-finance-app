@@ -3,6 +3,8 @@ import {
   toProjectedChartData,
   projectedSeries,
   toUtilisationChartData,
+  toActualChartData,
+  toSavingsChartData,
   shortMonth,
   LINE_COLORS,
 } from '../forecastChartHelpers.js';
@@ -141,6 +143,130 @@ describe('toUtilisationChartData', () => {
     ];
     const out = toUtilisationChartData(months, debts);
     expect(out.rows[0].utilisation).toBe(0);
+  });
+});
+
+describe('toActualChartData', () => {
+  const debts = [
+    { id: 'd1', name: 'Zopa' },
+    { id: 'd2', name: 'Klarna' },
+  ];
+  const months = [
+    { month: '2026-05-01', ending_debt_pennies: 0, per_debt: [
+      { debt_id: 'd1', ending_pennies: 500000 },
+      { debt_id: 'd2', ending_pennies: 60000 },
+    ]},
+    { month: '2026-06-01', ending_debt_pennies: 0, per_debt: [
+      { debt_id: 'd1', ending_pennies: 450000 },
+      { debt_id: 'd2', ending_pennies: 50000 },
+    ]},
+    { month: '2026-07-01', ending_debt_pennies: 0, per_debt: [
+      { debt_id: 'd1', ending_pennies: 400000 },
+      { debt_id: 'd2', ending_pennies: 40000 },
+    ]},
+  ];
+
+  it('returns the base projected rows when no snapshots are provided', () => {
+    const out = toActualChartData(months, debts, []);
+    expect(out).toHaveLength(3);
+    expect(out[0]).not.toHaveProperty('Zopa_actual');
+  });
+
+  it('attaches `${name}_actual` only to the row the snapshot falls in', () => {
+    const mayMs = new Date('2026-05-15').getTime();
+    const snapshots = [{ debt_id: 'd1', as_of_date: mayMs, balance_pennies: 490000 }];
+    const out = toActualChartData(months, debts, snapshots);
+    expect(out[0]).toHaveProperty('Zopa_actual', 4900); // pennies → pounds
+    expect(out[1]).not.toHaveProperty('Zopa_actual');
+    expect(out[2]).not.toHaveProperty('Zopa_actual');
+    // Klarna untouched throughout
+    expect(out.every((r) => !('Klarna_actual' in r))).toBe(true);
+  });
+
+  it('uses the latest snapshot when multiple fall in the same row', () => {
+    const early = new Date('2026-05-03').getTime();
+    const late  = new Date('2026-05-28').getTime();
+    const snapshots = [
+      { debt_id: 'd1', as_of_date: early, balance_pennies: 510000 },
+      { debt_id: 'd1', as_of_date: late,  balance_pennies: 495000 },
+    ];
+    const out = toActualChartData(months, debts, snapshots);
+    expect(out[0].Zopa_actual).toBe(4950);
+  });
+
+  it('drops snapshots before the forecast horizon starts', () => {
+    const before = new Date('2026-01-15').getTime();
+    const snapshots = [{ debt_id: 'd1', as_of_date: before, balance_pennies: 600000 }];
+    const out = toActualChartData(months, debts, snapshots);
+    expect(out.every((r) => !('Zopa_actual' in r))).toBe(true);
+  });
+
+  it('assigns snapshots after the last forecast row to the last row', () => {
+    const future = new Date('2026-12-31').getTime();
+    const snapshots = [{ debt_id: 'd1', as_of_date: future, balance_pennies: 100000 }];
+    const out = toActualChartData(months, debts, snapshots);
+    expect(out[2].Zopa_actual).toBe(1000);
+    expect(out[1]).not.toHaveProperty('Zopa_actual');
+  });
+
+  it('ignores snapshots whose debt_id is not in the debts list', () => {
+    const mayMs = new Date('2026-05-15').getTime();
+    const snapshots = [{ debt_id: 'ghost', as_of_date: mayMs, balance_pennies: 999999 }];
+    const out = toActualChartData(months, debts, snapshots);
+    expect(out[0]).not.toHaveProperty('ghost_actual');
+    expect(out[0]).not.toHaveProperty('Zopa_actual');
+  });
+
+  it('returns an empty array for empty forecast input', () => {
+    expect(toActualChartData([], debts, [])).toEqual([]);
+  });
+});
+
+describe('toSavingsChartData', () => {
+  it('returns an empty array for empty inputs', () => {
+    expect(toSavingsChartData([], [])).toEqual([]);
+    expect(toSavingsChartData(null, null)).toEqual([]);
+  });
+
+  it('computes cumulative interest saved month by month', () => {
+    const plan = [
+      { month: '2026-05-01', interest_pennies: 1000 },
+      { month: '2026-06-01', interest_pennies: 900 },
+      { month: '2026-07-01', interest_pennies: 800 },
+    ];
+    const minOnly = [
+      { month: '2026-05-01', interest_pennies: 2000 },
+      { month: '2026-06-01', interest_pennies: 1800 },
+      { month: '2026-07-01', interest_pennies: 1600 },
+    ];
+    const out = toSavingsChartData(plan, minOnly);
+    // Month 0: (2000) - (1000) = 1000p = £10
+    expect(out[0].savedPounds).toBeCloseTo(10, 5);
+    // Month 1: (2000+1800) - (1000+900) = 1900p = £19
+    expect(out[1].savedPounds).toBeCloseTo(19, 5);
+    // Month 2: (2000+1800+1600) - (1000+900+800) = 2700p = £27
+    expect(out[2].savedPounds).toBeCloseTo(27, 5);
+  });
+
+  it('clamps savings to zero when the plan somehow accrues more than min-only', () => {
+    const plan = [{ month: '2026-05-01', interest_pennies: 5000 }];
+    const minOnly = [{ month: '2026-05-01', interest_pennies: 1000 }];
+    const out = toSavingsChartData(plan, minOnly);
+    expect(out[0].savedPounds).toBe(0);
+  });
+
+  it('handles a shorter min-only array — uses 0 for the missing months', () => {
+    const plan = [
+      { month: '2026-05-01', interest_pennies: 1000 },
+      { month: '2026-06-01', interest_pennies: 1000 },
+    ];
+    const minOnly = [
+      { month: '2026-05-01', interest_pennies: 3000 },
+      // no June row
+    ];
+    const out = toSavingsChartData(plan, minOnly);
+    expect(out[0].savedPounds).toBeCloseTo(20, 5);   // 3000 - 1000 = 2000p
+    expect(out[1].savedPounds).toBeCloseTo(10, 5);   // still 3000 total - 2000 total = 1000p
   });
 });
 
