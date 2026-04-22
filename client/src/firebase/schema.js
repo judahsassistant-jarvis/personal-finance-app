@@ -226,6 +226,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {string} name
  * @property {string} subtype - one of DEBT_SUBTYPES
  * @property {number} balance_pennies - current balance (for card/revolving/overdraft) or principal (for installments)
+ * @property {number} [starting_balance_pennies] - reference balance for payoff-progress bar on installment debts (loan/BNPL); defaults to balance_pennies at creation. Omitted for card_like — those use utilisation instead.
  * @property {number} [standard_apr] - decimal; used by card_like + revolving subtypes
  * @property {number} [min_percentage] - decimal; card subtypes (e.g. 0.02 = 2%)
  * @property {number} [min_floor_pennies] - card subtypes
@@ -377,6 +378,7 @@ export function newAccountDoc({
 export function newDebtDoc({
   user_id,
   name,
+  starting_balance_pennies,
   subtype,
   balance_pennies = 0,
   standard_apr,
@@ -398,6 +400,13 @@ export function newDebtDoc({
     priority,
     created: serverTimestamp(),
   };
+  // Non-card-like debts anchor "payoff progress" on their starting balance.
+  // Default to the current balance if the caller didn't provide one, so a
+  // brand-new loan starts at 0% paid off with a coherent reference point.
+  // Card-like debts use utilisation (balance / limit) instead, so we skip.
+  if (!CARD_LIKE_SUBTYPES.has(subtype)) {
+    doc.starting_balance_pennies = starting_balance_pennies ?? balance_pennies;
+  }
   if (CARD_LIKE_SUBTYPES.has(subtype)) {
     if (standard_apr != null) doc.standard_apr = standard_apr;
     doc.min_percentage = min_percentage;

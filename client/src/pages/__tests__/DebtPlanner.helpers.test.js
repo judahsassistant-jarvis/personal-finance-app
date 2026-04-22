@@ -9,6 +9,7 @@ import {
   computeWeightedApr,
   computeUtilisation,
   UTILISATION_THRESHOLDS,
+  computePayoffProgress,
 } from '../debtPlannerHelpers.js';
 
 function daysFromNow(n) {
@@ -141,5 +142,87 @@ describe('computeUtilisation', () => {
   it('exports thresholds consumers can reference', () => {
     expect(UTILISATION_THRESHOLDS.GOOD).toBe(0.30);
     expect(UTILISATION_THRESHOLDS.FAIR).toBe(0.75);
+  });
+});
+
+describe('computePayoffProgress (installment)', () => {
+  it('returns null when the debt has no starting_balance', () => {
+    expect(computePayoffProgress({}, 10000, 'installment')).toBeNull();
+    expect(computePayoffProgress({ starting_balance_pennies: 0 }, 10000, 'installment')).toBeNull();
+    expect(computePayoffProgress({ starting_balance_pennies: null }, 10000, 'installment')).toBeNull();
+  });
+
+  it('returns 0% for a brand-new debt (balance == starting)', () => {
+    const p = computePayoffProgress({ starting_balance_pennies: 500000 }, 500000, 'installment');
+    expect(p.progressRatio).toBe(0);
+    expect(p.paidPennies).toBe(0);
+    expect(p.remainingPennies).toBe(500000);
+  });
+
+  it('returns 100% for a fully paid debt', () => {
+    const p = computePayoffProgress({ starting_balance_pennies: 500000 }, 0, 'installment');
+    expect(p.progressRatio).toBe(1);
+    expect(p.paidPennies).toBe(500000);
+    expect(p.remainingPennies).toBe(0);
+  });
+
+  it('returns the expected fraction mid-way through', () => {
+    // £600,000 starting, £450,000 balance → 25% paid off
+    const p = computePayoffProgress({ starting_balance_pennies: 600000 }, 450000, 'installment');
+    expect(p.progressRatio).toBeCloseTo(0.25, 5);
+    expect(p.paidPennies).toBe(150000);
+    expect(p.remainingPennies).toBe(450000);
+  });
+
+  it('clamps to 0 when balance exceeds starting (e.g. interest pushed it up)', () => {
+    const p = computePayoffProgress({ starting_balance_pennies: 100000 }, 120000, 'installment');
+    expect(p.progressRatio).toBe(0);
+    expect(p.paidPennies).toBe(0);
+  });
+
+  it('carries the mode through so the UI can pick the right wording', () => {
+    const p = computePayoffProgress({ starting_balance_pennies: 100000 }, 50000, 'installment');
+    expect(p.mode).toBe('installment');
+  });
+});
+
+describe('computePayoffProgress (overdraft)', () => {
+  it('uses limit_pennies as the reference, not starting_balance', () => {
+    // Overdraft of £1,000 facility, currently £500 in → 50% "cleared" toward zero
+    const p = computePayoffProgress({ limit_pennies: 100000 }, 50000, 'overdraft');
+    expect(p.progressRatio).toBeCloseTo(0.5, 5);
+    expect(p.paidPennies).toBe(50000);
+    expect(p.referencePennies).toBe(100000);
+  });
+
+  it('is 100% when the overdraft is cleared (balance 0)', () => {
+    const p = computePayoffProgress({ limit_pennies: 100000 }, 0, 'overdraft');
+    expect(p.progressRatio).toBe(1);
+  });
+
+  it('is 0% when fully maxed out (balance == limit)', () => {
+    const p = computePayoffProgress({ limit_pennies: 100000 }, 100000, 'overdraft');
+    expect(p.progressRatio).toBe(0);
+  });
+
+  it('clamps to 0 when over the overdraft limit', () => {
+    const p = computePayoffProgress({ limit_pennies: 100000 }, 150000, 'overdraft');
+    expect(p.progressRatio).toBe(0);
+  });
+
+  it('returns null when limit is not set', () => {
+    expect(computePayoffProgress({}, 50000, 'overdraft')).toBeNull();
+    expect(computePayoffProgress({ limit_pennies: 0 }, 50000, 'overdraft')).toBeNull();
+  });
+
+  it('ignores starting_balance in overdraft mode even if it is set', () => {
+    // limit is the anchor; a stale starting_balance shouldn't sneak through
+    const p = computePayoffProgress(
+      { limit_pennies: 100000, starting_balance_pennies: 999999 },
+      50000,
+      'overdraft',
+    );
+    expect(p.referencePennies).toBe(100000);
+    expect(p.progressRatio).toBeCloseTo(0.5, 5);
   });
 });

@@ -25,6 +25,7 @@ import BucketForm from '../components/debts/BucketForm.jsx';
 import StrategyCard from '../components/debts/StrategyCard.jsx';
 import StrategyComparison from '../components/debts/StrategyComparison.jsx';
 import UtilisationBar from '../components/debts/UtilisationBar.jsx';
+import PayoffProgressBar from '../components/debts/PayoffProgressBar.jsx';
 
 // Group spec: display order, label, icon, subtype membership test.
 const GROUPS = [
@@ -222,7 +223,7 @@ function DebtRow({
   onEditDebt, onDeleteDebt,
   onAddBucket, onEditBucket, onDeleteBucket, onCloseBucketForm,
 }) {
-  const { debt, totalBalance, min, blendedApr, promo, buckets, utilisation } = row;
+  const { debt, totalBalance, min, blendedApr, promo, buckets, utilisation, payoffProgress } = row;
   const aprPct = blendedApr > 0 ? `${(blendedApr * 100).toFixed(1)}%` : '—';
   const minLabel = min > 0 ? `${formatGBP(min)}/mo min` : 'No contractual min';
   const dueLabel = debt.payment_due_day ? `Due day ${debt.payment_due_day}` : null;
@@ -264,6 +265,7 @@ function DebtRow({
       </div>
 
       {utilisation && <UtilisationBar utilisation={utilisation} />}
+      {payoffProgress && <PayoffProgressBar progress={payoffProgress} />}
 
       {isCardLike && (
         <div className="mt-3 ml-2 border-l-2 border-border pl-3 space-y-2">

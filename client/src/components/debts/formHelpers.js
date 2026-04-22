@@ -21,6 +21,7 @@ export const emptyDebtForm = {
   name: '',
   subtype: DEBT_SUBTYPES.CARD,
   balance: '',
+  starting_balance: '',
   standard_apr: '',
   min_percentage: '2',
   min_floor: '25',
@@ -53,6 +54,9 @@ export function debtToForm(debt) {
     balance: CARD_LIKE_SUBTYPES.has(debt.subtype)
       ? ''
       : debt.balance_pennies != null ? String(penniesToPounds(debt.balance_pennies)) : '',
+    starting_balance: debt.starting_balance_pennies != null
+      ? String(penniesToPounds(debt.starting_balance_pennies))
+      : '',
     standard_apr: decimalToPercentString(debt.standard_apr),
     min_percentage: debt.min_percentage != null ? decimalToPercentString(debt.min_percentage) : '2',
     min_floor: debt.min_floor_pennies != null ? String(penniesToPounds(debt.min_floor_pennies)) : '25',
@@ -86,6 +90,10 @@ export function validateDebtForm(form) {
     } else {
       const bal = Number(form.balance);
       if (!Number.isFinite(bal) || bal < 0) errors.balance = 'Must be 0 or greater';
+    }
+    if (form.starting_balance !== '' && form.starting_balance != null) {
+      const sb = Number(form.starting_balance);
+      if (!Number.isFinite(sb) || sb < 0) errors.starting_balance = 'Must be 0 or greater';
     }
   }
 
@@ -149,6 +157,9 @@ export function debtFormToPayload(form) {
   };
   if (!isCardLike) {
     payload.balance_pennies = poundsToPennies(form.balance);
+    if (form.starting_balance !== '' && form.starting_balance != null) {
+      payload.starting_balance_pennies = poundsToPennies(form.starting_balance);
+    }
   } else {
     payload.balance_pennies = 0; // derived from buckets
   }

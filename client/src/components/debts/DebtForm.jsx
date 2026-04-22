@@ -128,6 +128,21 @@ export default function DebtForm({ editingDebt, onClose }) {
               </LabeledField>
             )}
 
+            {isInstallment && (
+              <LabeledField
+                label="Starting balance (£)"
+                error={errors.starting_balance}
+                hint="Used for the payoff progress bar. Defaults to current balance for a fresh debt."
+              >
+                <Input
+                  type="number" step="0.01" min="0"
+                  placeholder={form.balance || '0'}
+                  value={form.starting_balance}
+                  onChange={(e) => field('starting_balance', e.target.value)}
+                />
+              </LabeledField>
+            )}
+
             {form.subtype !== DEBT_SUBTYPES.BNPL && (
               <LabeledField
                 label={isCardLike ? 'Standard APR % (post-promo)' : 'APR %'}

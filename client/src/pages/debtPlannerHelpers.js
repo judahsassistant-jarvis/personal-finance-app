@@ -24,16 +24,20 @@ export function enrichDebt(debt, debtBuckets) {
   if (INSTALLMENT_SUBTYPES.has(debt.subtype)) {
     const totalBalance = Number(debt.balance_pennies || 0);
     const min = calcInstallmentMinPayment(debt, totalBalance);
-    return { debt, buckets: [], totalBalance, min, blendedApr: Number(debt.standard_apr || 0), promo: null };
+    const payoffProgress = computePayoffProgress(debt, totalBalance, 'installment');
+    return { debt, buckets: [], totalBalance, min, blendedApr: Number(debt.standard_apr || 0), promo: null, payoffProgress };
   }
   if (REVOLVING_SUBTYPES.has(debt.subtype)) {
+    const totalBalance = Number(debt.balance_pennies || 0);
+    const payoffProgress = computePayoffProgress(debt, totalBalance, 'overdraft');
     return {
       debt,
       buckets: [],
-      totalBalance: Number(debt.balance_pennies || 0),
+      totalBalance,
       min: 0,
       blendedApr: Number(debt.standard_apr || 0),
       promo: null,
+      payoffProgress,
     };
   }
   return { debt, buckets: [], totalBalance: 0, min: 0, blendedApr: 0, promo: null };
@@ -141,6 +145,45 @@ function bandForRatio(ratio) {
   if (ratio < UTILISATION_THRESHOLDS.GOOD) return 'good';
   if (ratio < UTILISATION_THRESHOLDS.FAIR) return 'fair';
   return 'poor';
+}
+
+/**
+ * Payoff progress — how far a non-revolving debt has been paid down from its
+ * reference point toward zero.
+ *
+ * For installment debts (BNPL, personal loan), the reference is the debt's
+ * `starting_balance_pennies` — its original principal when the user took it on.
+ * For overdrafts, the reference is `limit_pennies` (the overdraft facility).
+ * An overdraft's "starting balance" drifts month to month, so the limit is a
+ * more stable anchor — clearing £500 of a £1,000 facility always reads as 50%
+ * progress, regardless of where the balance was last week.
+ *
+ * Returns null when no valid reference is available (e.g. limit not set on an
+ * overdraft, or a legacy installment debt with no starting_balance). The bar
+ * renders nothing in that case rather than showing a fake 0%.
+ *
+ * @param {Object} debt - DebtDoc
+ * @param {number} currentBalance - total balance in pennies (caller-computed)
+ * @param {'installment' | 'overdraft'} mode
+ */
+export function computePayoffProgress(debt, currentBalance, mode) {
+  const referencePennies = mode === 'overdraft'
+    ? Number(debt?.limit_pennies ?? 0)
+    : Number(debt?.starting_balance_pennies ?? 0);
+
+  if (!Number.isFinite(referencePennies) || referencePennies <= 0) return null;
+
+  const balance = Math.max(0, Number(currentBalance || 0));
+  const paidPennies = Math.max(0, referencePennies - balance);
+  const progressRatio = Math.min(1, paidPennies / referencePennies);
+
+  return {
+    progressRatio,
+    referencePennies,
+    paidPennies,
+    remainingPennies: balance,
+    mode,
+  };
 }
 
 export function toDate(v) {

@@ -132,6 +132,7 @@ async function seedDebts() {
       name: 'Klarna Sofa Purchase',
       subtype: 'bnpl',
       balance_pennies: 54000,
+      starting_balance_pennies: 72000,           // 8 monthly payments ago
       standard_apr: 0,
       fixed_payment_pennies: 9000,
       term_months: 6,
@@ -143,6 +144,7 @@ async function seedDebts() {
       name: 'Zopa Personal Loan',
       subtype: 'personal_loan',
       balance_pennies: 450000,
+      starting_balance_pennies: 600000,          // originally £6,000, ~25% paid down
       standard_apr: 0.089,
       fixed_payment_pennies: 18500,
       term_months: 36,
