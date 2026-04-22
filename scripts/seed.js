@@ -56,6 +56,7 @@ async function resetUserData() {
   const scopedCollections = [
     'accounts', 'debts', 'card_buckets', 'transactions', 'recurring_bills',
     'monthly_budgets', 'debt_config', 'forecast_snapshots', 'audit_log',
+    'balance_snapshots',
   ];
   for (const name of scopedCollections) {
     const snap = await db.collection(name).where('user_id', '==', SEED_UID).get();
@@ -345,6 +346,52 @@ async function seedBankHolidays() {
   });
 }
 
+async function seedBalanceSnapshots(debtIds) {
+  // A short history per non-card debt so the new ProgressCard has something
+  // to chart. Cards' balances move by individual transactions; snapshots are
+  // most useful for installment / overdraft accounts where the user gets a
+  // monthly statement and types the new balance in.
+  const snapshots = [
+    {
+      debt_id: debtIds['Klarna Sofa Purchase'],
+      as_of_date: daysAgo(60),
+      balance_pennies: 72000,
+      source: 'manual',
+      notes: 'Purchase confirmation',
+    },
+    {
+      debt_id: debtIds['Klarna Sofa Purchase'],
+      as_of_date: daysAgo(30),
+      balance_pennies: 63000,
+      source: 'manual',
+    },
+    {
+      debt_id: debtIds['Zopa Personal Loan'],
+      as_of_date: daysAgo(180),
+      balance_pennies: 600000,
+      source: 'manual',
+      notes: 'Loan opening balance',
+    },
+    {
+      debt_id: debtIds['Zopa Personal Loan'],
+      as_of_date: daysAgo(90),
+      balance_pennies: 525000,
+      source: 'manual',
+    },
+    {
+      debt_id: debtIds['Zopa Personal Loan'],
+      as_of_date: daysAgo(30),
+      balance_pennies: 470000,
+      source: 'manual',
+    },
+  ];
+  for (const s of snapshots) {
+    await db.collection('balance_snapshots').add({
+      user_id: SEED_UID, ...s, created: now,
+    });
+  }
+}
+
 async function main() {
   console.log(`Seeding emulator at ${process.env.FIRESTORE_EMULATOR_HOST} ...`);
   await ensureUser();
@@ -357,6 +404,7 @@ async function main() {
   await seedRecurringBills();
   await seedBudgets();
   await seedTransactions(accountIds);
+  await seedBalanceSnapshots(debtIds);
   await seedBankHolidays();
   console.log('Seed complete.');
   process.exit(0);

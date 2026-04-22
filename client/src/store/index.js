@@ -7,6 +7,7 @@ import transactionsReducer from './transactionsSlice.js';
 import budgetsReducer from './budgetsSlice.js';
 import debtConfigReducer from './debtConfigSlice.js';
 import recurringBillsReducer from './recurringBillsSlice.js';
+import balanceSnapshotsReducer from './balanceSnapshotsSlice.js';
 import systemReducer from './systemSlice.js';
 
 export const store = configureStore({
@@ -19,6 +20,7 @@ export const store = configureStore({
     budgets: budgetsReducer,
     debtConfig: debtConfigReducer,
     recurringBills: recurringBillsReducer,
+    balanceSnapshots: balanceSnapshotsReducer,
     system: systemReducer,
   },
 });

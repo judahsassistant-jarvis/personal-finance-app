@@ -70,6 +70,7 @@ const USER_SCOPED = [
   'debts',
   'card_buckets',
   'transactions',
+  'balance_snapshots',
   'recurring_bills',
   'monthly_budgets',
   'debt_config',

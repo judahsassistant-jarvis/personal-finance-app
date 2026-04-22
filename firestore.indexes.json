@@ -86,6 +86,24 @@
       ]
     },
     {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "debt_id", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "balance_snapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "debt_id", "order": "ASCENDING" },
+        { "fieldPath": "as_of_date", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "recurring_bills",
       "queryScope": "COLLECTION",
       "fields": [

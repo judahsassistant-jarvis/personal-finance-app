@@ -19,12 +19,18 @@ export const COLLECTIONS = Object.freeze({
   DEBTS: 'debts',
   CARD_BUCKETS: 'card_buckets',
   TRANSACTIONS: 'transactions',
+  BALANCE_SNAPSHOTS: 'balance_snapshots',
   RECURRING_BILLS: 'recurring_bills',
   MONTHLY_BUDGETS: 'monthly_budgets',
   DEBT_CONFIG: 'debt_config',
   FORECAST_SNAPSHOTS: 'forecast_snapshots',
   AUDIT_LOG: 'audit_log',
   SYSTEM: 'system',
+});
+
+export const BALANCE_SNAPSHOT_SOURCE = Object.freeze({
+  MANUAL: 'manual',
+  IMPORTED: 'imported',
 });
 
 // ==========================================================================
@@ -238,6 +244,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {boolean} priority - flag for visual sort / emphasis
  * @property {number} [payment_due_day] - 1..31 for reminders
  * @property {boolean} reminders_enabled - whether `generatePaymentReminders` (Sprint 7) should send emails for this debt. Defaults to true; user can disable per-debt in DebtForm. No effect until the Cloud Function ships.
+ * @property {import('firebase/firestore').FieldValue} plan_baseline_at - when this debt was first added to the plan. Anchor for progress-divergence calc in 4f.
  * @property {import('firebase/firestore').FieldValue} created
  */
 
@@ -410,6 +417,10 @@ export function newDebtDoc({
   if (INSTALLMENT_SUBTYPES.has(subtype)) {
     doc.starting_balance_pennies = starting_balance_pennies ?? balance_pennies;
   }
+  // Snapshot the moment this debt entered the user's plan. Used by 4f's
+  // progress metrics to compute "X months ahead/behind original plan" by
+  // re-running the original forecast and comparing to actual.
+  doc.plan_baseline_at = serverTimestamp();
   if (CARD_LIKE_SUBTYPES.has(subtype)) {
     if (standard_apr != null) doc.standard_apr = standard_apr;
     doc.min_percentage = min_percentage;
@@ -557,6 +568,38 @@ export function newForecastSnapshotDoc({ user_id, type, payload }) {
     generated_at: serverTimestamp(),
     payload,
   };
+}
+
+/**
+ * @typedef {Object} BalanceSnapshotDoc
+ * @property {string} user_id
+ * @property {string} debt_id
+ * @property {import('firebase/firestore').Timestamp} as_of_date - the statement date the balance is asserted as-of
+ * @property {number} balance_pennies
+ * @property {'manual' | 'imported'} source - how the snapshot was captured
+ * @property {string} [notes] - optional user comment
+ * @property {import('firebase/firestore').FieldValue} created
+ */
+
+/** @returns {BalanceSnapshotDoc} */
+export function newBalanceSnapshotDoc({
+  user_id,
+  debt_id,
+  as_of_date,
+  balance_pennies,
+  source = BALANCE_SNAPSHOT_SOURCE.MANUAL,
+  notes,
+}) {
+  const doc = {
+    user_id,
+    debt_id,
+    as_of_date,
+    balance_pennies: Math.round(Number(balance_pennies || 0)),
+    source,
+    created: serverTimestamp(),
+  };
+  if (notes != null && String(notes).length > 0) doc.notes = notes;
+  return doc;
 }
 
 /** @returns {AuditLogDoc} */
