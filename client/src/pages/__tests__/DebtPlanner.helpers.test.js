@@ -4,7 +4,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
-import { computePromoInfo, computeWeightedApr } from '../debtPlannerHelpers.js';
+import {
+  computePromoInfo,
+  computeWeightedApr,
+  computeUtilisation,
+  UTILISATION_THRESHOLDS,
+} from '../debtPlannerHelpers.js';
 
 function daysFromNow(n) {
   const d = new Date();
@@ -82,5 +87,59 @@ describe('computeWeightedApr', () => {
 
   it('returns 0 on empty bucket array', () => {
     expect(computeWeightedApr([])).toBe(0);
+  });
+});
+
+describe('computeUtilisation', () => {
+  it('returns null when the debt has no limit_pennies', () => {
+    expect(computeUtilisation({}, 10000)).toBeNull();
+    expect(computeUtilisation({ limit_pennies: 0 }, 10000)).toBeNull();
+    expect(computeUtilisation({ limit_pennies: null }, 10000)).toBeNull();
+  });
+
+  it('classifies ratios below 30% as good (green)', () => {
+    // £2,900 on a £10,000 limit = 29%
+    const u = computeUtilisation({ limit_pennies: 1000000 }, 290000);
+    expect(u.band).toBe('good');
+    expect(u.ratio).toBeCloseTo(0.29, 5);
+    expect(u.overLimit).toBe(false);
+  });
+
+  it('classifies ratios at the 30% threshold as fair (amber)', () => {
+    // Exactly 30% is the lower edge of the fair band.
+    const u = computeUtilisation({ limit_pennies: 1000000 }, 300000);
+    expect(u.band).toBe('fair');
+  });
+
+  it('classifies ratios below 75% as fair (amber)', () => {
+    const u = computeUtilisation({ limit_pennies: 1000000 }, 740000);
+    expect(u.band).toBe('fair');
+  });
+
+  it('classifies ratios at or above 75% as poor (red)', () => {
+    // At the threshold: poor.
+    expect(computeUtilisation({ limit_pennies: 1000000 }, 750000).band).toBe('poor');
+    // Clearly into poor territory.
+    expect(computeUtilisation({ limit_pennies: 1000000 }, 900000).band).toBe('poor');
+  });
+
+  it('flags overLimit when balance exceeds limit and reports the true ratio', () => {
+    // £1,250 on a £1,000 limit = 125% utilisation.
+    const u = computeUtilisation({ limit_pennies: 100000 }, 125000);
+    expect(u.overLimit).toBe(true);
+    expect(u.ratio).toBeCloseTo(1.25, 5);
+    expect(u.band).toBe('poor');
+  });
+
+  it('clamps negative balance to zero (credit balance on card)', () => {
+    const u = computeUtilisation({ limit_pennies: 1000000 }, -5000);
+    expect(u.ratio).toBe(0);
+    expect(u.band).toBe('good');
+    expect(u.overLimit).toBe(false);
+  });
+
+  it('exports thresholds consumers can reference', () => {
+    expect(UTILISATION_THRESHOLDS.GOOD).toBe(0.30);
+    expect(UTILISATION_THRESHOLDS.FAIR).toBe(0.75);
   });
 });

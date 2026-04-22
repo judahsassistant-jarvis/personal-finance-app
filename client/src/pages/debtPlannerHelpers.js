@@ -18,7 +18,8 @@ export function enrichDebt(debt, debtBuckets) {
     const min = calcCardMinPayment(debt, totalBalance);
     const blendedApr = computeWeightedApr(debtBuckets);
     const promo = computePromoInfo(debtBuckets);
-    return { debt, buckets: debtBuckets, totalBalance, min, blendedApr, promo };
+    const utilisation = computeUtilisation(debt, totalBalance);
+    return { debt, buckets: debtBuckets, totalBalance, min, blendedApr, promo, utilisation };
   }
   if (INSTALLMENT_SUBTYPES.has(debt.subtype)) {
     const totalBalance = Number(debt.balance_pennies || 0);
@@ -105,6 +106,41 @@ export function computeTotals(debts, bucketsByDebtId) {
 export function byPriorityThenBalance(a, b) {
   if (a.debt.priority !== b.debt.priority) return a.debt.priority ? -1 : 1;
   return b.totalBalance - a.totalBalance;
+}
+
+// Credit-utilisation thresholds (matches UK credit-bureau conventions —
+// Experian's published "good / fair / poor" bands for revolving credit).
+// Values are the upper bound of each non-poor band: a ratio strictly below
+// GOOD is green, strictly below FAIR is amber, and GE FAIR is red.
+export const UTILISATION_THRESHOLDS = Object.freeze({
+  GOOD: 0.30,
+  FAIR: 0.75,
+});
+
+/**
+ * Compute utilisation info for a card-like debt. Returns null if the debt has
+ * no `limit_pennies` set (or zero) — the UtilisationBar renders nothing in
+ * that case. Over-limit is supported: ratio can exceed 1; consumers should
+ * cap the visual bar but show the true percentage label.
+ */
+export function computeUtilisation(debt, totalBalance) {
+  const limit = Number(debt?.limit_pennies ?? 0);
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  const balance = Math.max(0, Number(totalBalance || 0));
+  const ratio = balance / limit;
+  return {
+    ratio,
+    limitPennies: limit,
+    balancePennies: balance,
+    overLimit: balance > limit,
+    band: bandForRatio(ratio),
+  };
+}
+
+function bandForRatio(ratio) {
+  if (ratio < UTILISATION_THRESHOLDS.GOOD) return 'good';
+  if (ratio < UTILISATION_THRESHOLDS.FAIR) return 'fair';
+  return 'poor';
 }
 
 export function toDate(v) {
