@@ -134,8 +134,11 @@ function SnapshotRow({ snapshot, onDelete }) {
 
 function formatTimestamp(d) {
   if (!d) return '—';
+  // serializeDoc converts Firestore Timestamps to epoch millis, so numbers
+  // are the common shape after fetch.
   const ms =
-    d instanceof Date ? d.getTime()
+    typeof d === 'number' ? (Number.isFinite(d) ? d : 0)
+      : d instanceof Date ? d.getTime()
       : typeof d === 'string' ? new Date(d).getTime()
       : typeof d?.toDate === 'function' ? d.toDate().getTime()
       : typeof d?.seconds === 'number' ? d.seconds * 1000

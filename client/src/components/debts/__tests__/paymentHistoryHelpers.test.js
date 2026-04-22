@@ -77,6 +77,24 @@ describe('buildPaymentTimeline', () => {
     expect(buildPaymentTimeline({ debtId: 'd1', transactions: null, snapshots: null })).toEqual([]);
     expect(buildPaymentTimeline({ debtId: 'd1' })).toEqual([]);
   });
+
+  it('accepts epoch-millis date fields (the shape after serializeDoc)', () => {
+    // serializeDoc converts Firestore Timestamps to plain millis numbers on
+    // fetch, so buildPaymentTimeline must recognise that shape as a valid date.
+    // Regression: previously every fetched snapshot silently dropped through
+    // toMillis()'s default-return-0 and the panel showed "0 snapshots".
+    const marchMs = new Date('2026-03-15').getTime();
+    const aprilMs = new Date('2026-04-10').getTime();
+    const out = buildPaymentTimeline({
+      debtId: 'd1',
+      transactions: [{ id: 't1', debt_id: 'd1', date: aprilMs, amount_pennies: -10000 }],
+      snapshots:    [{ id: 's1', debt_id: 'd1', as_of_date: marchMs, balance_pennies: 500000 }],
+    });
+    expect(out).toHaveLength(2);
+    expect(out[0].id).toBe('tx:t1'); // April payment is newer
+    expect(out[1].id).toBe('snap:s1');
+    expect(out[0].timestamp).toBe(aprilMs);
+  });
 });
 
 describe('summarisePaymentTimeline', () => {

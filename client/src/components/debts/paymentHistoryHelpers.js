@@ -73,6 +73,9 @@ export function summarisePaymentTimeline(timeline) {
 
 function toMillis(d) {
   if (!d) return 0;
+  // serializeDoc converts Firestore Timestamps to epoch millis — this is the
+  // usual shape after fetch. Check first so the fast path is one check.
+  if (typeof d === 'number') return Number.isFinite(d) ? d : 0;
   if (d instanceof Date) return d.getTime();
   if (typeof d === 'string') {
     const t = new Date(d).getTime();

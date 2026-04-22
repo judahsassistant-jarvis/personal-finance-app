@@ -288,6 +288,9 @@ function byDateDesc(a, b) {
 
 function toMillis(d) {
   if (!d) return 0;
+  // serializeDoc converts Firestore Timestamps to epoch millis, so this is
+  // the usual shape after fetch. Check first.
+  if (typeof d === 'number') return Number.isFinite(d) ? d : 0;
   if (d instanceof Date) return d.getTime();
   if (typeof d === 'string') return new Date(d).getTime();
   if (typeof d.toDate === 'function') return d.toDate().getTime();
