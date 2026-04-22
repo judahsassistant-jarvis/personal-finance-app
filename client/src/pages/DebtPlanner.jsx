@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   CreditCard, Landmark, ShoppingBag, Banknote, Plus, Clock,
-  Pencil, Trash2, Bell, BellOff,
+  Pencil, Trash2, Bell, BellOff, Receipt,
 } from 'lucide-react';
 import { fetchDebts, removeDebt } from '../store/debtsSlice.js';
 import { fetchBuckets, removeBucket } from '../store/cardBucketsSlice.js';
@@ -32,6 +32,7 @@ import MilestonesCard from '../components/debts/MilestonesCard.jsx';
 import BonusPaymentCard from '../components/debts/BonusPaymentCard.jsx';
 import WhatIfScenarioCard from '../components/debts/WhatIfScenarioCard.jsx';
 import PromoCliffCountdown from '../components/debts/PromoCliffCountdown.jsx';
+import RecordSnapshotForm from '../components/debts/RecordSnapshotForm.jsx';
 
 // Single source of truth for subtype → icon. Used for both the group
 // header (via GROUPS below) and the per-row visual badge in DebtRow.
@@ -87,6 +88,8 @@ export default function DebtPlanner() {
   const [debtForm, setDebtForm] = useState(null);
   // Bucket form state: null | { debtId, bucket? }
   const [bucketForm, setBucketForm] = useState(null);
+  // Snapshot form state: null | { debtId }
+  const [snapshotForm, setSnapshotForm] = useState(null);
 
   useEffect(() => {
     dispatch(fetchDebts());
@@ -187,12 +190,15 @@ export default function DebtPlanner() {
                 key={group.key}
                 group={group}
                 bucketForm={bucketForm}
+                snapshotForm={snapshotForm}
                 onEditDebt={(debt) => setDebtForm({ mode: 'edit', debt })}
                 onDeleteDebt={handleDeleteDebt}
                 onAddBucket={(debtId) => setBucketForm({ debtId, bucket: null })}
                 onEditBucket={(debtId, bucket) => setBucketForm({ debtId, bucket })}
                 onDeleteBucket={handleDeleteBucket}
                 onCloseBucketForm={() => setBucketForm(null)}
+                onRecordSnapshot={(debtId) => setSnapshotForm({ debtId })}
+                onCloseSnapshotForm={() => setSnapshotForm(null)}
               />
             )
           ))}
@@ -203,9 +209,10 @@ export default function DebtPlanner() {
 }
 
 function DebtGroup({
-  group, bucketForm,
+  group, bucketForm, snapshotForm,
   onEditDebt, onDeleteDebt,
   onAddBucket, onEditBucket, onDeleteBucket, onCloseBucketForm,
+  onRecordSnapshot, onCloseSnapshotForm,
 }) {
   const Icon = group.icon;
   return (
@@ -224,12 +231,15 @@ function DebtGroup({
             <DebtRow
               row={row}
               bucketForm={bucketForm}
+              snapshotForm={snapshotForm}
               onEditDebt={onEditDebt}
               onDeleteDebt={onDeleteDebt}
               onAddBucket={onAddBucket}
               onEditBucket={onEditBucket}
               onDeleteBucket={onDeleteBucket}
               onCloseBucketForm={onCloseBucketForm}
+              onRecordSnapshot={onRecordSnapshot}
+              onCloseSnapshotForm={onCloseSnapshotForm}
             />
           </div>
         ))}
@@ -239,9 +249,10 @@ function DebtGroup({
 }
 
 function DebtRow({
-  row, bucketForm,
+  row, bucketForm, snapshotForm,
   onEditDebt, onDeleteDebt,
   onAddBucket, onEditBucket, onDeleteBucket, onCloseBucketForm,
+  onRecordSnapshot, onCloseSnapshotForm,
 }) {
   const { debt, totalBalance, min, blendedApr, promo, buckets, utilisation, payoffProgress } = row;
   const aprPct = blendedApr > 0 ? `${(blendedApr * 100).toFixed(1)}%` : '—';
@@ -249,7 +260,11 @@ function DebtRow({
   const dueLabel = debt.payment_due_day ? `Due day ${debt.payment_due_day}` : null;
   const isCardLike = CARD_LIKE_SUBTYPES.has(debt.subtype);
   const bucketFormOpenHere = bucketForm && bucketForm.debtId === debt.id;
+  const snapshotFormOpenHere = snapshotForm && snapshotForm.debtId === debt.id;
   const SubtypeIcon = SUBTYPE_ICONS[debt.subtype];
+  // Snapshots are most useful for installment + revolving — cards have buckets
+  // the user edits directly. Hide the affordance on card-like debts.
+  const supportsSnapshot = !isCardLike;
 
   return (
     <div className="py-3">
@@ -300,6 +315,25 @@ function DebtRow({
       {promo && <PromoCliffCountdown promo={promo} />}
       {utilisation && <UtilisationBar utilisation={utilisation} />}
       {payoffProgress && <PayoffProgressBar progress={payoffProgress} />}
+
+      {supportsSnapshot && (
+        snapshotFormOpenHere ? (
+          <RecordSnapshotForm
+            debt={debt}
+            currentBalancePennies={totalBalance}
+            onClose={onCloseSnapshotForm}
+          />
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRecordSnapshot(debt.id)}
+            className="mt-2 h-7 text-xs"
+          >
+            <Receipt className="w-3 h-3" />Record statement balance
+          </Button>
+        )
+      )}
 
       {isCardLike && (
         <div className="mt-3 ml-2 border-l-2 border-border pl-3 space-y-2">
