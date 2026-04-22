@@ -23,6 +23,7 @@ import { Separator } from '../components/ui/separator.jsx';
 import DebtForm from '../components/debts/DebtForm.jsx';
 import BucketForm from '../components/debts/BucketForm.jsx';
 import StrategyCard from '../components/debts/StrategyCard.jsx';
+import StrategyComparison from '../components/debts/StrategyComparison.jsx';
 
 // Group spec: display order, label, icon, subtype membership test.
 const GROUPS = [
@@ -142,7 +143,12 @@ export default function DebtPlanner() {
         />
       )}
 
-      {debts.length > 0 && !debtForm && <StrategyCard rows={allRows} />}
+      {debts.length > 0 && !debtForm && (
+        <>
+          <StrategyCard rows={allRows} />
+          <StrategyComparison debts={debts} buckets={buckets} />
+        </>
+      )}
 
       {debts.length === 0 && !debtForm ? (
         <Card>

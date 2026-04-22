@@ -136,6 +136,9 @@ export function getHybridScore(effectiveApr, positionIndex, totalBalancePennies)
  * @param {number} [options.months=60]
  * @param {number|null} [options.monthlyBudget] - pennies; null = sum of minimums
  * @param {'avalanche'|'snowball'|'hybrid'} [options.strategy]
+ * @param {boolean} [options.minOnly=false] - if true, skip extra-allocation phase
+ *   regardless of budget. Used to compute the "what if I only paid the minimums"
+ *   baseline for strategy comparison.
  * @param {Object|null} [options.cashFlow] - optional context recorded on summary rows
  * @returns {Object} { months, payoffSchedules, cliffs, summary, debtFreeMonth }
  */
@@ -146,6 +149,7 @@ export function runForecast({
   months = 60,
   monthlyBudget = null,
   strategy = 'avalanche',
+  minOnly = false,
   cashFlow = null,
 }) {
   const start = toDate(startMonth);
@@ -220,8 +224,8 @@ export function runForecast({
       cs.totalBalance = recomputeBalance(cs);
     }
 
-    // Phase 5: allocate extra by strategy
-    const extraPool = Math.max(0, budget - totalMinApplied);
+    // Phase 5: allocate extra by strategy (skipped in min-only baseline mode)
+    const extraPool = minOnly ? 0 : Math.max(0, budget - totalMinApplied);
     let totalExtraMonth = 0;
     if (extraPool > 0) {
       const targets = buildExtraTargets(activeStates, strategy);

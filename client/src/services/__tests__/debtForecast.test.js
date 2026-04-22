@@ -271,6 +271,34 @@ describe('runForecast — snowball vs avalanche', () => {
   });
 });
 
+describe('runForecast — minOnly baseline', () => {
+  test('minOnly pays no extra regardless of budget', () => {
+    const debts = [{
+      id: 'd1', subtype: DEBT_SUBTYPES.CARD, name: 'Card',
+      balance_pennies: 500000, standard_apr: 0.20, min_percentage: 0.02, min_floor_pennies: 2500,
+    }];
+    const buckets = [{ id: 'b1', debt_id: 'd1', name: 'P', balance_pennies: 500000, apr: 0.20, is_promo: false }];
+    const r = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 6, monthlyBudget: 50000, minOnly: true });
+    // Every month's extra should be zero, regardless of how big the budget is.
+    for (const row of r.months) {
+      expect(row.extra_payments_pennies).toBe(0);
+    }
+  });
+
+  test('minOnly costs more interest than an equally-budgeted strategy', () => {
+    // A strategy with a real budget pays down balance faster, so accrues less interest overall.
+    const debts = [{
+      id: 'd1', subtype: DEBT_SUBTYPES.CARD, name: 'Card',
+      balance_pennies: 500000, standard_apr: 0.20, min_percentage: 0.02, min_floor_pennies: 2500,
+    }];
+    const buckets = [{ id: 'b1', debt_id: 'd1', name: 'P', balance_pennies: 500000, apr: 0.20, is_promo: false }];
+    const withBudget = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 120, monthlyBudget: 50000, strategy: 'avalanche' });
+    const baseline  = runForecast({ debts, buckets, startMonth: '2026-05-01', months: 600, monthlyBudget: 50000, minOnly: true });
+    expect(baseline.summary.totalInterestPennies).toBeGreaterThan(withBudget.summary.totalInterestPennies);
+    expect(baseline.summary.monthsToPayoff).toBeGreaterThan(withBudget.summary.monthsToPayoff);
+  });
+});
+
 describe('runForecast — hybrid strategy', () => {
   test('with no sub-£500 debts, behaves like avalanche (highest APR first)', () => {
     const debts = [
