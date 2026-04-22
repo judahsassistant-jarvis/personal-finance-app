@@ -152,54 +152,69 @@ describe('toActualVsProjectedChartData', () => {
     { id: 'd2', name: 'Klarna' },
   ];
   const months = [
+    // Month 0 (transition): beginning = 500k → projected should start there.
     { month: '2026-05-01', ending_debt_pennies: 0, per_debt: [
-      { debt_id: 'd1', ending_pennies: 500000 },
-      { debt_id: 'd2', ending_pennies: 60000 },
+      { debt_id: 'd1', beginning_pennies: 500000, ending_pennies: 490000 },
+      { debt_id: 'd2', beginning_pennies: 60000,  ending_pennies: 55000 },
     ]},
     { month: '2026-06-01', ending_debt_pennies: 0, per_debt: [
-      { debt_id: 'd1', ending_pennies: 450000 },
-      { debt_id: 'd2', ending_pennies: 50000 },
+      { debt_id: 'd1', beginning_pennies: 490000, ending_pennies: 450000 },
+      { debt_id: 'd2', beginning_pennies: 55000,  ending_pennies: 50000 },
     ]},
     { month: '2026-07-01', ending_debt_pennies: 0, per_debt: [
-      { debt_id: 'd1', ending_pennies: 400000 },
-      { debt_id: 'd2', ending_pennies: 40000 },
+      { debt_id: 'd1', beginning_pennies: 450000, ending_pennies: 400000 },
+      { debt_id: 'd2', beginning_pennies: 50000,  ending_pennies: 40000 },
     ]},
   ];
 
   it('returns one row per forecast month when no snapshots are provided', () => {
     const out = toActualVsProjectedChartData(months, debts, []);
     expect(out).toHaveLength(3);
-    // All rows should have projected values, none should have actuals.
-    expect(out[0]).toHaveProperty('Zopa_projected', 5000);
-    expect(out.every((r) => !('Zopa_actual' in r))).toBe(true);
+    // Every row has projected. The transition month (first forecast) also
+    // carries an actual value equal to the beginning balance so the line
+    // has a starting anchor — otherwise the chart would draw only the
+    // dashed projection with nothing to hand off from.
+    expect(out[0]).toHaveProperty('Zopa_projected');
+    expect(out[0]).toHaveProperty('Zopa_actual'); // = beginning_pennies of month 0
+    expect(out[1]).not.toHaveProperty('Zopa_actual');
+    expect(out[2]).not.toHaveProperty('Zopa_actual');
   });
 
-  it('creates a past row for a snapshot month that precedes the forecast', () => {
-    // Seeded snapshot in March — forecast starts in May.
+  it('the transition month has equal actual + projected so the lines meet visually', () => {
+    // No snapshots in the forecast range — beginning_pennies seeds both.
+    const out = toActualVsProjectedChartData(months, debts, []);
+    for (const debt of debts) {
+      expect(out[0][`${debt.name}_actual`]).toBe(out[0][`${debt.name}_projected`]);
+    }
+  });
+
+  it('a snapshot before the forecast gets its own past row; the transition still bridges', () => {
+    // Snapshot in March — forecast starts in May (May 1 → beginning = 500000).
     const marchMs = new Date('2026-03-20').getTime();
     const snapshots = [{ debt_id: 'd1', as_of_date: marchMs, balance_pennies: 550000 }];
     const out = toActualVsProjectedChartData(months, debts, snapshots);
-    expect(out).toHaveLength(4); // Mar '26 added to the left
+    expect(out).toHaveLength(4);
+    // March: actual-only row (no forecast data yet).
     expect(out[0].month).toBe("Mar '26");
     expect(out[0].Zopa_actual).toBe(5500);
-    // March has no projected data — the forecast hasn't started yet.
     expect(out[0]).not.toHaveProperty('Zopa_projected');
-    // The May forecast row is untouched by snapshots.
-    expect(out[1]).not.toHaveProperty('Zopa_actual');
-    expect(out[1].Zopa_projected).toBe(5000);
+    // May (transition): both set to the same value — lines meet here.
+    expect(out[1].Zopa_actual).toBe(out[1].Zopa_projected);
+    // June + July: projected only.
+    expect(out[2]).not.toHaveProperty('Zopa_actual');
+    expect(out[3]).not.toHaveProperty('Zopa_actual');
   });
 
-  it('attaches `${name}_actual` only to the snapshot month on each debt', () => {
+  it('a snapshot in the transition month itself wins over beginning_pennies', () => {
+    // Snapshot in May — forecast's May row starts from that snapshot (since
+    // RecordSnapshotForm keeps balance_pennies in sync, but test independently).
     const mayMs = new Date('2026-05-15').getTime();
     const snapshots = [{ debt_id: 'd1', as_of_date: mayMs, balance_pennies: 490000 }];
     const out = toActualVsProjectedChartData(months, debts, snapshots);
     expect(out[0].Zopa_actual).toBe(4900);
-    expect(out[0].Zopa_projected).toBe(5000); // both present → lines meet here
+    expect(out[0].Zopa_projected).toBe(4900); // snapshot value, not beginning_pennies
+    // Transition is still in the first forecast row.
     expect(out[1]).not.toHaveProperty('Zopa_actual');
-    expect(out[2]).not.toHaveProperty('Zopa_actual');
-    // Klarna had no snapshot — only projected.
-    expect(out.every((r) => !('Klarna_actual' in r))).toBe(true);
-    expect(out[0].Klarna_projected).toBe(600);
   });
 
   it('uses the latest snapshot when multiple fall in the same month', () => {
@@ -233,7 +248,11 @@ describe('toActualVsProjectedChartData', () => {
     const snapshots = [{ debt_id: 'ghost', as_of_date: mayMs, balance_pennies: 999999 }];
     const out = toActualVsProjectedChartData(months, debts, snapshots);
     expect(out[0]).not.toHaveProperty('ghost_actual');
-    expect(out[0]).not.toHaveProperty('Zopa_actual');
+    // Zopa still has actual+projected seeded from beginning_pennies at the
+    // transition — we never consult the ghost snapshot since its debt_id
+    // isn't in the debts list.
+    expect(out[0].Zopa_actual).toBe(5000);
+    expect(out[0].Zopa_projected).toBe(5000);
   });
 
   it('returns an empty array for empty forecast + empty snapshots', () => {

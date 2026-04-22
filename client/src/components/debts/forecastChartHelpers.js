@@ -124,11 +124,17 @@ export function toActualVsProjectedChartData(months, debts, snapshots) {
   }
 
   // YYYY-MM → forecast month row, for quick lookup during row assembly.
+  // We also remember which YYYY-MM is the FIRST forecast row — that's the
+  // transition point where actuals hand off to projected, and both series
+  // need to carry the same value there so the lines visually meet.
   const forecastByYm = new Map();
+  let firstForecastYm = null;
   for (const m of months || []) {
     const ms = parseMonthLabelToMs(m.month);
     if (!ms) continue;
-    forecastByYm.set(yearMonth(new Date(ms)), m);
+    const ym = yearMonth(new Date(ms));
+    if (firstForecastYm === null) firstForecastYm = ym;
+    forecastByYm.set(ym, m);
   }
 
   // All months that need a row: every snapshot month + every forecast month.
@@ -141,13 +147,30 @@ export function toActualVsProjectedChartData(months, debts, snapshots) {
   // across the four tabs.
   const rows = sortedYms.map((ym) => {
     const row = { month: shortMonthFromYm(ym) };
+    const fm = forecastByYm.get(ym);
+    const isTransition = ym === firstForecastYm;
+
     for (const debt of debts || []) {
       const snap = snapByKey.get(`${debt.id}|${ym}`);
-      if (snap) row[`${debt.name}_actual`] = snap.pennies / 100;
-      const fm = forecastByYm.get(ym);
-      if (fm) {
-        const pd = (fm.per_debt || []).find((p) => p.debt_id === debt.id);
-        if (pd) row[`${debt.name}_projected`] = Number(pd.ending_pennies || 0) / 100;
+      const pd = fm ? (fm.per_debt || []).find((p) => p.debt_id === debt.id) : null;
+
+      if (isTransition) {
+        // At the transition month BOTH series carry the same value so solid
+        // (actual) and dashed (projected) lines meet. Snapshot in this month
+        // wins (it's more specific); otherwise fall back to the forecast's
+        // beginning-of-month balance, which == current balance == latest
+        // snapshot (RecordSnapshotForm keeps the two in sync on save).
+        const currentPennies = snap
+          ? snap.pennies
+          : Number(pd?.beginning_pennies || 0);
+        row[`${debt.name}_actual`] = currentPennies / 100;
+        row[`${debt.name}_projected`] = currentPennies / 100;
+      } else if (pd) {
+        // Future forecast month: projected only.
+        row[`${debt.name}_projected`] = Number(pd.ending_pennies || 0) / 100;
+      } else if (snap) {
+        // Past snapshot month with no forecast row: actual only.
+        row[`${debt.name}_actual`] = snap.pennies / 100;
       }
     }
     return row;
