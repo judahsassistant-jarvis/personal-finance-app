@@ -15,6 +15,7 @@ import {
 import { computeDiscretionary } from '../services/discretionary.js';
 import { daysRemainingInCycle, getNextPayDay } from '../services/payCycle.js';
 import { billStatusInCycle, billDateInCycle } from '../services/recurringBills.js';
+import ProgressCard from '../components/debts/ProgressCard.jsx';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
 import { Badge } from '../components/ui/badge.jsx';
 import { Separator } from '../components/ui/separator.jsx';
@@ -197,6 +198,10 @@ export default function Dashboard() {
 
         <BufferCard bufferPennies={bufferPennies} onSave={(p) => dispatch(updateProfile({ buffer_pennies: p }))} />
       </div>
+
+      {debts.length > 0 && (
+        <ProgressCard debts={debts} buckets={buckets} variant="compact" />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <AccountList accounts={accounts} />
