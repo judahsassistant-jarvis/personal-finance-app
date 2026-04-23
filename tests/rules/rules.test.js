@@ -11,7 +11,7 @@
  * Also covers users/{uid} self-only access, and system/* read-only.
  */
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,6 +30,11 @@ const RULES_PATH = path.resolve(__dirname, '../../firestore.rules');
 const PROJECT_ID = 'pfa-rules-test';
 const ALICE = 'alice-uid';
 const BOB = 'bob-uid';
+const MALLORY = 'mallory-uid';
+// Allowlisted in firestore.rules. Non-allowlisted emails must fail the authed() gate.
+const ALICE_EMAIL = 'judahsassistant@gmail.com';
+const BOB_EMAIL = 'yehuda.levi@outlook.com';
+const MALLORY_EMAIL = 'mallory@example.com';
 
 let env;
 
@@ -48,11 +53,18 @@ after(async () => {
   await env.cleanup();
 });
 
+beforeEach(async () => {
+  await env.clearFirestore();
+});
+
 function aliceDb() {
-  return env.authenticatedContext(ALICE).firestore();
+  return env.authenticatedContext(ALICE, { email: ALICE_EMAIL }).firestore();
 }
 function bobDb() {
-  return env.authenticatedContext(BOB).firestore();
+  return env.authenticatedContext(BOB, { email: BOB_EMAIL }).firestore();
+}
+function malloryDb() {
+  return env.authenticatedContext(MALLORY, { email: MALLORY_EMAIL }).firestore();
 }
 function anonDb() {
   return env.unauthenticatedContext().firestore();
@@ -186,5 +198,26 @@ describe('unknown collection', () => {
     await assertFails(setDoc(doc(aliceDb(), 'secrets', 'x'), { user_id: ALICE, v: 1 }));
     await seed('secrets', 'y', { user_id: ALICE });
     await assertFails(getDoc(doc(aliceDb(), 'secrets', 'y')));
+  });
+});
+
+describe('email allowlist', () => {
+  it('non-allowlisted email cannot create own users/{uid} profile', async () => {
+    await assertFails(
+      setDoc(doc(malloryDb(), 'users', MALLORY), { email: MALLORY_EMAIL })
+    );
+  });
+  it('non-allowlisted email cannot read another allowlisted user doc', async () => {
+    await seed('users', ALICE, { email: ALICE_EMAIL });
+    await assertFails(getDoc(doc(malloryDb(), 'users', ALICE)));
+  });
+  it('non-allowlisted email cannot create user-scoped docs', async () => {
+    await assertFails(
+      setDoc(doc(malloryDb(), 'accounts', 'x'), { user_id: MALLORY, name: 'sneaky' })
+    );
+  });
+  it('non-allowlisted email cannot read system docs', async () => {
+    await seed('system', 'bank_holidays', { england_and_wales: [] });
+    await assertFails(getDoc(doc(malloryDb(), 'system', 'bank_holidays')));
   });
 });

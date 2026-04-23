@@ -80,6 +80,7 @@ async function seedUser() {
     },
     buffer_pennies: 20000, // £200 buffer
     tier: 'free',
+    onboarding_complete: true, // seeded session skips the first-run wizard
     created: now,
   });
 }

@@ -4,7 +4,9 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { subscribeToAuth } from './store/authSlice.js';
 import Layout from './components/Layout';
 import RequireAuth from './components/RequireAuth';
+import RequireOnboarded from './components/RequireOnboarded';
 import Login from './pages/Login';
+import FirstRun from './pages/FirstRun';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import DebtPlanner from './pages/DebtPlanner';
@@ -24,7 +26,17 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route path="/welcome" element={<RequireAuth><FirstRun /></RequireAuth>} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <RequireOnboarded>
+                <Layout />
+              </RequireOnboarded>
+            </RequireAuth>
+          }
+        >
           <Route index element={<Dashboard />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="debts" element={<DebtPlanner />} />

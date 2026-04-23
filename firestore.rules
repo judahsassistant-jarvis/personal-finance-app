@@ -1,14 +1,28 @@
 rules_version = '2';
 
 // Personal Finance App — Firestore security rules
-// 2a scope: private dogfood, authenticated users read/write only their own docs.
-// 2b transition: tighten users/{uid} create to a UID allowlist if exposing to public signup.
+// 2a scope: private dogfood — only allowlisted email addresses can authenticate
+//   to Firestore. Any other signed-in Google account is rejected at the rules
+//   layer, even though Firebase Auth itself will happily complete sign-in.
+// 2b transition: replace email allowlist with tier-based gating once paid
+//   signups are live.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Email allowlist for 2a dogfood. Edit here when onboarding a second
+    // dogfood user. Emulator-created accounts carry the email the test
+    // picker was seeded with, so these work in both emulator and prod.
+    function allowedEmails() {
+      return [
+        'judahsassistant@gmail.com',
+        'yehuda.levi@outlook.com',
+      ];
+    }
+
     function authed() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.token.email in allowedEmails();
     }
 
     // Standard ownership check for create.

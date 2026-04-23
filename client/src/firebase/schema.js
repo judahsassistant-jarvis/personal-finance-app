@@ -208,6 +208,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {PayCycle} pay_cycle
  * @property {number} buffer_pennies - safe-to-spend buffer before discretionary
  * @property {'free' | 'pro'} tier
+ * @property {boolean} onboarding_complete - false on first sign-in; set true when the user exits the first-run wizard (Sprint 5). Gate for redirecting to /welcome.
  * @property {import('firebase/firestore').FieldValue} created
  */
 
@@ -340,6 +341,7 @@ export function newUserDoc({ email, display_name }) {
     pay_cycle: { ...DEFAULT_PAY_CYCLE },
     buffer_pennies: 0,
     tier: TIERS.FREE,
+    onboarding_complete: false,
     created: serverTimestamp(),
   };
 }
