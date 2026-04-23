@@ -25,7 +25,14 @@ export const COLLECTIONS = Object.freeze({
   DEBT_CONFIG: 'debt_config',
   FORECAST_SNAPSHOTS: 'forecast_snapshots',
   AUDIT_LOG: 'audit_log',
+  NOTIFICATION_LOG: 'notification_log',
+  MAIL: 'mail',
   SYSTEM: 'system',
+});
+
+export const NOTIFICATION_TYPES = Object.freeze({
+  BT_CLIFF: 'bt_cliff',
+  PAYMENT_REMINDER: 'payment_reminder',
 });
 
 export const BALANCE_SNAPSHOT_SOURCE = Object.freeze({

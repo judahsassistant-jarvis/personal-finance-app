@@ -1,0 +1,8 @@
+{
+  "name": "pfa-functions-tests",
+  "private": true,
+  "description": "Node :test runner unit tests for functions/ helpers",
+  "scripts": {
+    "test": "node --test notifications.test.js"
+  }
+}

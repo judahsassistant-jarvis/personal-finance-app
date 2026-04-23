@@ -111,6 +111,20 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Notification log: Cloud Functions (admin SDK, rules bypassed) write
+    // entries when BT cliff / payment-reminder emails fire. Client may read
+    // its own records to show an in-app history; may not write (admin only).
+    match /notification_log/{id} {
+      allow read: if isMine();
+      allow create, update, delete: if false;
+    }
+
+    // Mail collection: queue consumed by the firestore-send-email extension
+    // (when installed in prod). Admin-only — clients never touch it.
+    match /mail/{id} {
+      allow read, write: if false;
+    }
+
     // --- System docs (bank holidays cache, written by Cloud Function via admin SDK) ---
     match /system/{docId} {
       allow read: if authed();
