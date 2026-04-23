@@ -401,9 +401,14 @@ async function seedBalanceSnapshots(debtIds) {
 }
 
 async function main() {
-  console.log(`Seeding emulator at ${process.env.FIRESTORE_EMULATOR_HOST} ...`);
+  const clearOnly = process.argv.includes('--clear');
+  console.log(`${clearOnly ? 'Clearing' : 'Seeding'} emulator at ${process.env.FIRESTORE_EMULATOR_HOST} ...`);
   await ensureUser();
   await resetUserData();
+  if (clearOnly) {
+    console.log('Clear complete. Sign in again — fresh users/{uid} doc will land you on /welcome.');
+    process.exit(0);
+  }
   await seedUser();
   const accountIds = await seedAccounts();
   const debtIds = await seedDebts();

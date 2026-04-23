@@ -14,6 +14,7 @@
     "deploy:functions": "firebase deploy --only functions",
     "deploy:hosting": "firebase deploy --only hosting",
     "seed": "cd scripts && npm run seed",
+    "clear": "cd scripts && npm run clear",
     "test:rules": "cd tests/rules && npm test",
     "test:client": "cd client && npm test",
     "test:all": "npm run test:client && npm run test:rules",
