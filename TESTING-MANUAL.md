@@ -37,7 +37,7 @@ Requires: empty emulator (`npm run clear`).
 - [ ] **Step 4 — Buffer:** enter £200, Finish. Redirects to `/` (Dashboard). `profile.onboarding_complete` flips to true.
 - [ ] Visit `/welcome` manually after finishing → should redirect straight to `/` (no re-entry).
 
-**Known gap:** the wizard only lets you add ONE account and ONE debt. Accounts CRUD on `/accounts` is deferred (see §6). For now, reseed with `npm run seed` if you need the full fixture set.
+**Note:** the wizard only lets you add ONE account and ONE debt. Full Accounts CRUD is on `/accounts` (§3.5) and Debt Planner CRUD on `/debts`. Reseed with `npm run seed` if you need the full fixture set instead of typing everything by hand.
 
 ---
 
@@ -52,7 +52,21 @@ Requires: a secondary Google-style emulator account.
 
 ---
 
-## 3. Debt Planner end-to-end (Sprint 4d–4f, 7)
+## 3. Accounts CRUD
+
+Requires: signed in with at least one account OR empty.
+
+- [ ] `/accounts` loads, "Add account" button top-right.
+- [ ] Click Add → inline form appears. Name, type dropdown, balance, rate (hidden for Current), SIPP qualifying age (only when type=SIPP), monthly contribution (optional), safe-to-spend checkbox.
+- [ ] Add a savings account (£5000, 4.5% rate, £100/mo contribution) → appears in the Liquid group with rate + contribution + safe-to-spend status on the row.
+- [ ] Add a SIPP (£50k, 5% growth, age 58, £300/mo) → appears in the Locked group with "unlocks at 58".
+- [ ] Edit a row via the pencil icon → form pre-populated. Change rate + balance, Save → changes reflected in the list.
+- [ ] Change subtype in the form from SIPP to Savings → SIPP age field disappears, rate field re-shows interest-rate label, save → doc has `interest_rate`, not `growth_rate`, no `sipp_age`.
+- [ ] Delete a row via trash icon → confirm dialog → row disappears from the list.
+- [ ] Invalid inputs (non-numeric balance, rate > 100, SIPP age outside 50-75) → inline errors, form does not submit.
+- [ ] Safe-to-spend toggle still works inline on each row.
+
+## 4. Debt Planner end-to-end (Sprint 4d–4f, 7 — includes Debt CRUD)
 
 Requires: seeded or hand-built dataset with at least 3 debts.
 
@@ -70,7 +84,7 @@ Requires: seeded or hand-built dataset with at least 3 debts.
 
 ---
 
-## 4. Forecast page (Sprint 6)
+## 5. Forecast page (Sprint 6)
 
 Requires: seeded dataset (5 accounts covering current / savings / cash ISA / S&S ISA / SIPP).
 
@@ -84,7 +98,7 @@ Requires: seeded dataset (5 accounts covering current / savings / cash ISA / S&S
 
 ---
 
-## 5. Cloud Function notifications (Sprint 7)
+## 6. Cloud Function notifications (Sprint 7)
 
 ### Emulator dry-run
 
@@ -111,9 +125,8 @@ The Cloud Functions write to `/mail`. Actual email delivery requires the **Fireb
 
 ---
 
-## 6. Known gaps — not yet testable
+## 7. Known gaps — not yet testable
 
-- **Accounts CRUD UI (`/accounts` page).** The page lists accounts + has the safe-to-spend toggle, but no add/edit/delete controls. Real 4-week dogfood needs this. 0.5–1d of work. Deferred post-Sprint 10.
 - **CSV import (`/import` page).** Stubbed as Coming Soon. Phase 1's csvParser logic ported in Sprint 3 but the import UI was never rebuilt for Firebase. Defer to the 2a → 2b transition when Open Banking is evaluated.
 - **Transactions / Budgets pages partially stubbed.** Transactions has tag + filter but no CSV ingest; Budgets is empty. Not blockers for dogfood (you'll work from seed + hand-edits via emulator UI).
 - **Real-data UAT.** Once Accounts CRUD lands, run through this checklist with Judah's actual accounts / debts / bank CSVs and verify the forecast + discretionary + reminder numbers against reality.
@@ -121,7 +134,7 @@ The Cloud Functions write to `/mail`. Actual email delivery requires the **Fireb
 
 ---
 
-## 7. 2a exit gate
+## 8. 2a exit gate
 
 Ship from this branch to a private prod Firebase project (not publicly advertised):
 
