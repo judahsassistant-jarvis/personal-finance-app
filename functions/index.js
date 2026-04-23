@@ -162,15 +162,11 @@ async function tryDispatchNotification(db, { logKey, logFields, mailDoc }) {
 // generateBtCliffAlerts — daily cron
 // ---------------------------------------------------------------------------
 
-exports.generateBtCliffAlerts = onSchedule(
-  {
-    schedule: 'every day 08:00',
-    timeZone: 'Europe/London',
-    retryCount: 2,
-  },
-  async () => {
-    const db = getFirestore();
-    const today = londonToday();
+/**
+ * Extracted scan so integration tests can run it deterministically with an
+ * injected `today`. The scheduled + HTTP wrappers just call this.
+ */
+async function runBtCliffScan({ db, today }) {
     // 90 days out is the outermost threshold. Anything further is ignored.
     const cutoff = new Date(today);
     cutoff.setDate(cutoff.getDate() + 90);
@@ -182,7 +178,7 @@ exports.generateBtCliffAlerts = onSchedule(
 
     if (snap.empty) {
       console.log('btCliffAlerts: no promo buckets within 90 days');
-      return;
+      return { sent: 0, skipped: 0, candidates: 0 };
     }
 
     // Prefetch user profiles and parent debts.
@@ -233,6 +229,17 @@ exports.generateBtCliffAlerts = onSchedule(
       if (dispatched) sent += 1; else skipped += 1;
     }
     console.log(`btCliffAlerts: sent=${sent}, skipped=${skipped}, candidates=${snap.size}`);
+    return { sent, skipped, candidates: snap.size };
+}
+
+exports.generateBtCliffAlerts = onSchedule(
+  {
+    schedule: 'every day 08:00',
+    timeZone: 'Europe/London',
+    retryCount: 2,
+  },
+  async () => {
+    await runBtCliffScan({ db: getFirestore(), today: londonToday() });
   },
 );
 
@@ -240,23 +247,14 @@ exports.generateBtCliffAlerts = onSchedule(
 // generatePaymentReminders — daily cron
 // ---------------------------------------------------------------------------
 
-exports.generatePaymentReminders = onSchedule(
-  {
-    schedule: 'every day 08:15',
-    timeZone: 'Europe/London',
-    retryCount: 2,
-  },
-  async () => {
-    const db = getFirestore();
-    const today = londonToday();
-
+async function runPaymentReminderScan({ db, today }) {
     const snap = await db.collectionGroup('debts')
       .where('reminders_enabled', '==', true)
       .where('payment_due_day', '>=', 1)
       .get();
     if (snap.empty) {
       console.log('paymentReminders: no debts eligible');
-      return;
+      return { sent: 0, skipped: 0, candidates: 0 };
     }
 
     const userIds = snap.docs.map((d) => d.data().user_id).filter(Boolean);
@@ -326,8 +324,23 @@ exports.generatePaymentReminders = onSchedule(
       if (dispatched) sent += 1; else skipped += 1;
     }
     console.log(`paymentReminders: sent=${sent}, skipped=${skipped}, candidates=${snap.size}`);
+    return { sent, skipped, candidates: snap.size };
+}
+
+exports.generatePaymentReminders = onSchedule(
+  {
+    schedule: 'every day 08:15',
+    timeZone: 'Europe/London',
+    retryCount: 2,
+  },
+  async () => {
+    await runPaymentReminderScan({ db: getFirestore(), today: londonToday() });
   },
 );
+
+// Expose scan functions to integration tests (not a published API).
+exports._runBtCliffScan = runBtCliffScan;
+exports._runPaymentReminderScan = runPaymentReminderScan;
 
 /**
  * Given a reminder's upcoming due date, the cycle it belongs to starts one
@@ -350,8 +363,8 @@ function cycleStartFromDueDate(dueDate) {
 
 exports.runBtCliffAlertsNow = onRequest(async (req, res) => {
   try {
-    await runSchedulerTarget(exports.generateBtCliffAlerts);
-    res.json({ ok: true });
+    const result = await runBtCliffScan({ db: getFirestore(), today: londonToday() });
+    res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err.message || err) });
   }
@@ -359,20 +372,12 @@ exports.runBtCliffAlertsNow = onRequest(async (req, res) => {
 
 exports.runPaymentRemindersNow = onRequest(async (req, res) => {
   try {
-    await runSchedulerTarget(exports.generatePaymentReminders);
-    res.json({ ok: true });
+    const result = await runPaymentReminderScan({ db: getFirestore(), today: londonToday() });
+    res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err.message || err) });
   }
 });
-
-async function runSchedulerTarget(schedulerFn) {
-  // v2 scheduler handles wrap the handler behind `.run()`; fall through to the
-  // raw handler if not present (emulator quirk).
-  if (typeof schedulerFn?.run === 'function') return schedulerFn.run({});
-  if (typeof schedulerFn?.__trigger?.regions === 'object' && typeof schedulerFn === 'function') return schedulerFn();
-  throw new Error('scheduler handler shape not recognised');
-}
 
 // Keep healthcheck for emulator verification.
 exports.healthcheck = onRequest((req, res) => {

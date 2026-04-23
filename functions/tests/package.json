@@ -3,6 +3,8 @@
   "private": true,
   "description": "Node :test runner unit tests for functions/ helpers",
   "scripts": {
-    "test": "node --test notifications.test.js"
+    "test": "node --test notifications.test.js",
+    "test:integration": "node --test integration.test.js",
+    "test:all": "node --test notifications.test.js integration.test.js"
   }
 }
