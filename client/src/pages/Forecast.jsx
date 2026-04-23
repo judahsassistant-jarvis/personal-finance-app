@@ -407,6 +407,9 @@ function PerAccountChart({ rows, series, scenarioActive, scenarioTargetName }) {
   const scenarioKey = scenarioActive && scenarioTargetName
     ? `${scenarioTargetName} (with extra)`
     : null;
+  const scenarioColor = scenarioActive
+    ? series.find((s) => s.key === scenarioTargetName)?.color
+    : null;
   return (
     <ResponsiveContainer width="100%" height={320}>
       <LineChart data={rows} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
@@ -436,6 +439,7 @@ function PerAccountChart({ rows, series, scenarioActive, scenarioTargetName }) {
             stroke={s.color}
             strokeWidth={1.5}
             dot={false}
+            legendType="plainline"
             isAnimationActive={false}
           />
         ))}
@@ -444,7 +448,7 @@ function PerAccountChart({ rows, series, scenarioActive, scenarioTargetName }) {
             key={scenarioKey}
             type="monotone"
             dataKey={scenarioKey}
-            stroke="#10b981"
+            stroke={scenarioColor ?? '#10b981'}
             strokeWidth={2}
             strokeDasharray="5 4"
             dot={false}
