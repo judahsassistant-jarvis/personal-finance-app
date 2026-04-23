@@ -209,6 +209,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {number} buffer_pennies - safe-to-spend buffer before discretionary
  * @property {'free' | 'pro'} tier
  * @property {boolean} onboarding_complete - false on first sign-in; set true when the user exits the first-run wizard (Sprint 5). Gate for redirecting to /welcome.
+ * @property {number} [birth_year] - optional. Only used to compute the SIPP qualifying-age horizon on the Forecast page (Sprint 6). When absent, SIPP horizon falls back to the default 12-month view.
  * @property {import('firebase/firestore').FieldValue} created
  */
 
