@@ -284,12 +284,18 @@ export function parseCSV(fileContent, accountId, { importBatchId } = {}) {
   // Strip UTF-8 BOM
   let content = fileContent.charCodeAt(0) === 0xfeff ? fileContent.slice(1) : fileContent;
 
-  // Strip Nationwide's pre-header metadata rows.
+  // Strip pre-header metadata rows. Covers Nationwide's export format
+  // ("Account Name:" / "Account Balance:" / "Available Balance:") and any
+  // `#`-prefixed comment lines emitted by the Claude-statement flow
+  // (see docs/claude-statement-prompt.md). Stops at the first non-matching
+  // line — a data row starting with a date won't accidentally be skipped.
   const lines = content.split('\n');
   let startIdx = 0;
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+  const MAX_METADATA_LINES = 50;
+  for (let i = 0; i < Math.min(lines.length, MAX_METADATA_LINES); i++) {
     const line = lines[i].trim();
     if (
+      line.startsWith('#') ||
       line.startsWith('Account Name:') ||
       line.startsWith('Account Balance:') ||
       line.startsWith('Available Balance:') ||

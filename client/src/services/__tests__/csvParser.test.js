@@ -232,4 +232,50 @@ describe('parseCSV', () => {
   test('rejects a File object with a helpful error', () => {
     expect(() => parseCSV({ not: 'a string' }, 'acct-1')).toThrow(/expects text/);
   });
+
+  test('skips `#`-prefixed comment metadata emitted by the Claude statement flow', () => {
+    // Matches the shape produced by docs/claude-statement-prompt.md v1.2.
+    const csv = [
+      '#bank: Virgin Money',
+      '#account: Virgin Atlantic •••• 1130',
+      '#account_type: credit_card',
+      '#period_start: 2026-03-07',
+      '#period_end: 2026-04-06',
+      '#opening_balance: 2925.96',
+      '#closing_balance: 3134.60',
+      '#total_debits: 472.78',
+      '#total_credits: 264.14',
+      '#transaction_count: 3',
+      '#balance_check: OK',
+      '#credit_limit: 3200.00',
+      '#available_to_spend: 65.40',
+      'Date,Description,Amount',
+      '2026-03-06,SQ *VICTOR VICTORIA CO Newmarket,-14.91',
+      '2026-03-08,PAYMENT RECEIVED,200.00',
+      '2026-04-06,INTEREST,-67.17',
+    ].join('\n');
+    const result = parseCSV(csv, 'acct-vm');
+    expect(result.format).toBe('generic');
+    expect(result.transactions.length).toBe(3);
+    const [victor, payment, interest] = result.transactions;
+    expect(victor.amount_pennies).toBe(-1491);
+    expect(victor.description).toBe('SQ *VICTOR VICTORIA CO Newmarket');
+    expect(payment.amount_pennies).toBe(20000);
+    expect(interest.amount_pennies).toBe(-6717);
+  });
+
+  test('a `#` inside a transaction description does not get stripped', () => {
+    // `#1234` appears in the TESCO merchant text — must survive the metadata stripper
+    // because only lines *starting* with `#` are treated as comments.
+    const csv = [
+      '#bank: Acme',
+      'Date,Description,Amount',
+      '2026-03-15,TESCO STORES #1234 NEWMARKET,-42.18',
+    ].join('\n');
+    const result = parseCSV(csv, 'acct-1');
+    expect(result.transactions.length).toBe(1);
+    // The #1234 is stripped by normalizeMerchant's #-digits rule, but the
+    // row itself survives — that's the only guarantee this test makes.
+    expect(result.transactions[0].amount_pennies).toBe(-4218);
+  });
 });
