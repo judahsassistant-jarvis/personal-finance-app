@@ -103,32 +103,60 @@ export function applyMultiAllocation(state, opts) {
   const eligibleSet = new Set(opts.eligibleDebtIds || []);
   const promoApr = Number(opts.newCard.promoApr ?? 0);
 
-  // 1. Build [debt, balance, apr] list; filter to user-selected debts whose
-  //    APR exceeds the BT promo APR (otherwise transferring is value-negative).
-  const candidates = [];
+  // 1. Flatten eligible debts into (debt, bucket, apr, balance) slices.
+  //    - Card-like: one slice per bucket (money in a 0% promo bucket on a
+  //      high-APR card isn't costing anything, so ranking by debt APR would
+  //      transfer zero-cost money and burn the BT fee on it).
+  //    - Installment / revolving: a single slice at the debt's standard_apr.
+  //    Slices at or below promoApr are dropped — transferring them is
+  //    value-negative (same fee, same or worse interest).
+  const slices = [];
   for (const d of debts) {
     if (!eligibleSet.has(d.id)) continue;
-    const apr = effectiveAprForRanking(d);
-    if (apr <= promoApr) continue;
-    const balance = currentDebtBalance(d, buckets);
-    if (balance <= 0) continue;
-    candidates.push({ debt: d, balance, apr });
+    if (CARD_LIKE_SUBTYPES.has(d.subtype)) {
+      for (const b of buckets) {
+        if (b.debt_id !== d.id) continue;
+        const balance = Math.max(0, Number(b.balance_pennies || 0));
+        if (balance <= 0) continue;
+        const apr = Number(b.apr ?? 0);
+        if (apr <= promoApr) continue;
+        slices.push({ debt: d, balance, apr });
+      }
+    } else {
+      const balance = Math.max(0, Number(d.balance_pennies || 0));
+      if (balance <= 0) continue;
+      const apr = Number(d.standard_apr ?? 0);
+      if (apr <= promoApr) continue;
+      slices.push({ debt: d, balance, apr });
+    }
   }
 
-  // 2. Greedy allocation: highest-APR debt first, full balance up to the cap.
-  candidates.sort((a, b) => b.apr - a.apr);
+  // 2. Greedy allocation: highest-APR slice first, taking up to the cap.
+  //    Aggregate per debt so the output matches the existing UI shape.
+  slices.sort((a, b) => b.apr - a.apr);
   let remaining = Math.max(0, Number(opts.availableLimitPennies || 0));
-  const allocations = [];
-  for (const c of candidates) {
+  const perDebt = new Map(); // debt_id -> { transferred, weightedNum }
+  for (const s of slices) {
     if (remaining <= 0) break;
-    const transfer = Math.min(c.balance, remaining);
-    allocations.push({
-      debt_id: c.debt.id,
-      transferred_pennies: transfer,
-      current_apr: c.apr,
-    });
-    remaining -= transfer;
+    const take = Math.min(s.balance, remaining);
+    if (take <= 0) continue;
+    remaining -= take;
+    const existing = perDebt.get(s.debt.id);
+    if (existing) {
+      existing.transferred += take;
+      existing.weightedNum += take * s.apr;
+    } else {
+      perDebt.set(s.debt.id, { transferred: take, weightedNum: take * s.apr });
+    }
   }
+
+  // perDebt is insertion-ordered; first-seen = highest-APR slice for that
+  // debt, so iteration order is stable + ranked like the old implementation.
+  const allocations = Array.from(perDebt, ([debt_id, v]) => ({
+    debt_id,
+    transferred_pennies: v.transferred,
+    current_apr: v.weightedNum / v.transferred,
+  }));
 
   const totalTransferPennies = allocations.reduce((s, a) => s + a.transferred_pennies, 0);
   const feePennies = Math.round(totalTransferPennies * Number(opts.newCard.feePercent || 0));
@@ -181,15 +209,6 @@ function currentDebtBalance(debt, buckets) {
       .reduce((s, b) => s + Math.max(0, Number(b.balance_pennies || 0)), 0);
   }
   return Math.max(0, Number(debt.balance_pennies || 0));
-}
-
-/**
- * For multi-allocation ranking: use the parent debt's standard_apr for cards
- * (effective APR varies by bucket but the user picks a debt as a unit), and
- * standard_apr for installment + revolving. Falls back to 0 if missing.
- */
-function effectiveAprForRanking(debt) {
-  return Number(debt.standard_apr ?? 0);
 }
 
 /**

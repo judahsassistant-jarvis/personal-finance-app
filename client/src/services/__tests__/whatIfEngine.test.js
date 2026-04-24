@@ -225,6 +225,36 @@ describe('applyMultiAllocation', () => {
     expect(newBucket.balance_pennies).toBe(260000);
   });
 
+  test('ranks by bucket APR, not headline card APR — skips zero-interest promo balances', () => {
+    // Like the real Barclaycard / Virgin / Zempler scenario: Barclaycard has a
+    // high headline APR but the full balance sits in an active 0% promo bucket,
+    // so transferring from there saves nothing (and wastes the BT fee). Virgin
+    // has a lower headline APR but real interest-bearing balance.
+    const debts = [
+      { id: 'barclay', subtype: DEBT_SUBTYPES.CARD, user_id: 'u', standard_apr: 0.28 },
+      { id: 'virgin',  subtype: DEBT_SUBTYPES.CARD, user_id: 'u', standard_apr: 0.241 },
+      { id: 'zempler', subtype: DEBT_SUBTYPES.CARD, user_id: 'u', standard_apr: 0.377 },
+    ];
+    const buckets = [
+      { id: 'barclay-promo', debt_id: 'barclay', balance_pennies: 609357, apr: 0, is_promo: true },
+      { id: 'virgin-std',    debt_id: 'virgin',  balance_pennies: 129136, apr: 0.241 },
+      { id: 'zempler-std',   debt_id: 'zempler', balance_pennies: 180296, apr: 0.377 },
+    ];
+    const out = applyMultiAllocation({ debts, buckets }, {
+      availableLimitPennies: 200000, // £2,000
+      eligibleDebtIds: ['barclay', 'virgin', 'zempler'],
+      newCard: newCardSpec(),
+      now,
+    });
+    const ids = out.allocations.map((a) => a.debt_id);
+    expect(ids).toEqual(['zempler', 'virgin']);
+    expect(out.allocations[0].transferred_pennies).toBe(180296);
+    expect(out.allocations[1].transferred_pennies).toBe(19704); // 200000 - 180296
+    expect(ids).not.toContain('barclay');
+    // Barclay's 0% bucket must be untouched.
+    expect(out.buckets.find((b) => b.id === 'barclay-promo').balance_pennies).toBe(609357);
+  });
+
   test('source card buckets are reduced highest-APR first per debt', () => {
     const debts = [{ id: 'card', subtype: DEBT_SUBTYPES.CARD, user_id: 'u', standard_apr: 0.249 }];
     const buckets = [
