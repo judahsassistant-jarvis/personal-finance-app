@@ -89,20 +89,33 @@ function emitRow(index, date, balances, accounts) {
 }
 
 /**
- * Compute projection horizon in months. When a SIPP account is present AND
- * birth_year is known, extend horizon far enough to reach the SIPP's qualifying
- * age. Otherwise use default. Horizon is always at least `defaultMonths`.
+ * Compute projection horizon in months. When `qualifyingAccounts` contains at
+ * least one account AND `birthYear` is known, extend horizon far enough to
+ * reach the max qualifying age across those accounts. Otherwise use default.
+ * Horizon is always at least `defaultMonths`.
+ *
+ * Used twice on the Forecast page: once with SIPP accounts / `sipp_age`, and
+ * once with Pension accounts / `pension_age`.
  *
  * @param {Object} input
  * @param {number} [input.defaultMonths=12]
- * @param {Array} [input.sippAccounts=[]] - accounts with subtype === SIPP
+ * @param {Array} [input.qualifyingAccounts=[]] - accounts to consider
+ * @param {string} [input.ageField='sipp_age'] - which field on each account holds the qualifying age
+ * @param {number} [input.defaultAge=57] - fallback when an account has no explicit age
  * @param {number} [input.birthYear] - from users/{uid}.birth_year
  * @param {Date} [input.now]
  */
-export function computeHorizonMonths({ defaultMonths = 12, sippAccounts = [], birthYear = null, now = new Date() } = {}) {
-  if (!sippAccounts.length || !birthYear) return defaultMonths;
+export function computeHorizonMonths({
+  defaultMonths = 12,
+  qualifyingAccounts = [],
+  ageField = 'sipp_age',
+  defaultAge = 57,
+  birthYear = null,
+  now = new Date(),
+} = {}) {
+  if (!qualifyingAccounts.length || !birthYear) return defaultMonths;
   const currentAge = now.getFullYear() - Number(birthYear);
-  const qualifyingAge = Math.max(...sippAccounts.map((a) => Number(a.sipp_age ?? 57)));
+  const qualifyingAge = Math.max(...qualifyingAccounts.map((a) => Number(a[ageField] ?? defaultAge)));
   const yearsToQualify = Math.max(0, qualifyingAge - currentAge);
   return Math.max(defaultMonths, yearsToQualify * 12);
 }

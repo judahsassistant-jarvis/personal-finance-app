@@ -41,6 +41,7 @@ export function emptyAccountFormState(subtype = ACCOUNT_SUBTYPES.CURRENT) {
     balance: '',
     rate: defaultRate != null ? String(defaultRate * 100) : '',
     sipp_age: '',
+    pension_age: '',
     monthly_contribution: '',
     include_in_safe_to_spend: !!DEFAULT_SAFE_TO_SPEND[subtype],
   };
@@ -55,6 +56,7 @@ export function accountToForm(account) {
     balance: account.balance_pennies != null ? String(penniesToPounds(account.balance_pennies)) : '',
     rate: annualRate != null ? String(Number((annualRate * 100).toFixed(3))) : '',
     sipp_age: account.sipp_age != null ? String(account.sipp_age) : '',
+    pension_age: account.pension_age != null ? String(account.pension_age) : '',
     monthly_contribution: account.monthly_contribution_pennies != null
       ? String(penniesToPounds(account.monthly_contribution_pennies))
       : '',
@@ -77,8 +79,9 @@ export function applySubtypeChange(form, nextSubtype) {
     subtype: nextSubtype,
     rate: nextRate != null ? String(nextRate * 100) : '',
     include_in_safe_to_spend: !!DEFAULT_SAFE_TO_SPEND[nextSubtype],
-    // Clear SIPP age if leaving SIPP.
+    // Clear qualifying ages if leaving the subtype that owns them.
     sipp_age: nextSubtype === ACCOUNT_SUBTYPES.SIPP ? form.sipp_age : '',
+    pension_age: nextSubtype === ACCOUNT_SUBTYPES.PENSION ? form.pension_age : '',
   };
 }
 
@@ -107,6 +110,17 @@ export function validateAccountForm(form) {
       const age = Number(form.sipp_age);
       if (!Number.isInteger(age) || age < 50 || age > 75) {
         errors.sipp_age = 'Must be 50–75';
+      }
+    }
+  }
+
+  if (form.subtype === ACCOUNT_SUBTYPES.PENSION) {
+    if (form.pension_age === '' || form.pension_age == null) {
+      errors.pension_age = 'Qualifying age is required for pension';
+    } else {
+      const age = Number(form.pension_age);
+      if (!Number.isInteger(age) || age < 50 || age > 75) {
+        errors.pension_age = 'Must be 50–75';
       }
     }
   }
@@ -147,6 +161,9 @@ export function accountFormToPayload(form) {
   if (form.subtype === ACCOUNT_SUBTYPES.SIPP && form.sipp_age !== '') {
     payload.sipp_age = Number(form.sipp_age);
   }
+  if (form.subtype === ACCOUNT_SUBTYPES.PENSION && form.pension_age !== '') {
+    payload.pension_age = Number(form.pension_age);
+  }
 
   if (CONTRIBUTION_SUBTYPES.has(form.subtype)
     && form.monthly_contribution !== '' && form.monthly_contribution != null) {
@@ -173,6 +190,9 @@ export function accountFormToEditPatch(form, existingAccount) {
   }
   if (!('sipp_age' in payload) && existingAccount.sipp_age != null) {
     payload.sipp_age = null;
+  }
+  if (!('pension_age' in payload) && existingAccount.pension_age != null) {
+    payload.pension_age = null;
   }
   if (!('monthly_contribution_pennies' in payload)
     && existingAccount.monthly_contribution_pennies != null) {

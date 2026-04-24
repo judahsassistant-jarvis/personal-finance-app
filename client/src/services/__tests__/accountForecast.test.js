@@ -152,15 +152,17 @@ describe('runAccountForecast', () => {
 describe('computeHorizonMonths', () => {
   const now = new Date('2026-04-23');
 
-  it('returns defaultMonths when no SIPP accounts', () => {
-    expect(computeHorizonMonths({ defaultMonths: 12, sippAccounts: [], birthYear: 1982, now }))
-      .toBe(12);
+  it('returns defaultMonths when no qualifying accounts', () => {
+    expect(computeHorizonMonths({
+      defaultMonths: 12, qualifyingAccounts: [], birthYear: 1982, now,
+    })).toBe(12);
   });
 
   it('returns defaultMonths when no birthYear', () => {
     expect(computeHorizonMonths({
       defaultMonths: 12,
-      sippAccounts: [{ sipp_age: 58 }],
+      qualifyingAccounts: [{ sipp_age: 58 }],
+      ageField: 'sipp_age',
       birthYear: null,
       now,
     })).toBe(12);
@@ -170,26 +172,50 @@ describe('computeHorizonMonths', () => {
     // Born 1982 → age 44 in 2026. Qualifying age 58 → 14 years → 168 months.
     expect(computeHorizonMonths({
       defaultMonths: 12,
-      sippAccounts: [{ sipp_age: 58 }],
+      qualifyingAccounts: [{ sipp_age: 58 }],
+      ageField: 'sipp_age',
       birthYear: 1982,
       now,
     })).toBe(14 * 12);
   });
 
-  it('uses the max qualifying age when multiple SIPPs differ', () => {
+  it('extends to reach a pension qualifying age via ageField', () => {
+    // Born 1982 → age 44 in 2026. Pension age 67 → 23 years → 276 months.
     expect(computeHorizonMonths({
       defaultMonths: 12,
-      sippAccounts: [{ sipp_age: 55 }, { sipp_age: 60 }],
+      qualifyingAccounts: [{ pension_age: 67 }],
+      ageField: 'pension_age',
+      birthYear: 1982,
+      now,
+    })).toBe(23 * 12);
+  });
+
+  it('uses the max qualifying age when multiple accounts differ', () => {
+    expect(computeHorizonMonths({
+      defaultMonths: 12,
+      qualifyingAccounts: [{ sipp_age: 55 }, { sipp_age: 60 }],
+      ageField: 'sipp_age',
       birthYear: 1982,
       now,
     })).toBe((60 - 44) * 12);
   });
 
-  it('never goes below defaultMonths', () => {
-    // Already past qualifying age
+  it('falls back to defaultAge when an account has no age set', () => {
     expect(computeHorizonMonths({
       defaultMonths: 12,
-      sippAccounts: [{ sipp_age: 40 }],
+      qualifyingAccounts: [{}],
+      ageField: 'pension_age',
+      defaultAge: 65,
+      birthYear: 1982,
+      now,
+    })).toBe((65 - 44) * 12);
+  });
+
+  it('never goes below defaultMonths', () => {
+    expect(computeHorizonMonths({
+      defaultMonths: 12,
+      qualifyingAccounts: [{ sipp_age: 40 }],
+      ageField: 'sipp_age',
       birthYear: 1982,
       now,
     })).toBe(12);

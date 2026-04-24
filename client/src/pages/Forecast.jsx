@@ -25,6 +25,7 @@ const HORIZON_OPTIONS = [
   { key: '60', label: '5 years', months: 60 },
   { key: '120', label: '10 years', months: 120 },
   { key: 'sipp', label: 'Until SIPP age', months: null }, // computed at render
+  { key: 'pension', label: 'Until pension age', months: null }, // computed at render
 ];
 
 const SUBTYPE_LABELS = {
@@ -64,22 +65,41 @@ export default function Forecast() {
     () => accounts.filter((a) => a.subtype === ACCOUNT_SUBTYPES.SIPP),
     [accounts],
   );
+  const pensionAccounts = useMemo(
+    () => accounts.filter((a) => a.subtype === ACCOUNT_SUBTYPES.PENSION),
+    [accounts],
+  );
   const sippHorizon = useMemo(
     () => computeHorizonMonths({
       defaultMonths: 12,
-      sippAccounts,
+      qualifyingAccounts: sippAccounts,
+      ageField: 'sipp_age',
+      defaultAge: 57,
       birthYear: profile?.birth_year,
     }),
     [sippAccounts, profile?.birth_year],
   );
+  const pensionHorizon = useMemo(
+    () => computeHorizonMonths({
+      defaultMonths: 12,
+      qualifyingAccounts: pensionAccounts,
+      ageField: 'pension_age',
+      defaultAge: 65,
+      birthYear: profile?.birth_year,
+    }),
+    [pensionAccounts, profile?.birth_year],
+  );
 
   const horizonMonths = useMemo(() => {
     if (horizonKey === 'sipp') return sippHorizon;
+    if (horizonKey === 'pension') return pensionHorizon;
     const opt = HORIZON_OPTIONS.find((o) => o.key === horizonKey);
     return opt?.months ?? 12;
-  }, [horizonKey, sippHorizon]);
+  }, [horizonKey, sippHorizon, pensionHorizon]);
 
   const sippHorizonAvailable = sippAccounts.length > 0 && profile?.birth_year && sippHorizon > 12;
+  const pensionHorizonAvailable = pensionAccounts.length > 0 && profile?.birth_year && pensionHorizon > 12;
+  const birthYearWanted = (sippAccounts.length > 0 || pensionAccounts.length > 0) && !profile?.birth_year;
 
   const forecast = useMemo(
     () => runAccountForecast({ accounts, months: horizonMonths }),
@@ -190,12 +210,16 @@ export default function Forecast() {
               activeKey={horizonKey}
               onChange={setHorizonKey}
               sippHorizonAvailable={sippHorizonAvailable}
+              pensionHorizonAvailable={pensionHorizonAvailable}
             />
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {sippAccounts.length > 0 && !profile?.birth_year && (
-            <BirthYearPrompt />
+          {birthYearWanted && (
+            <BirthYearPrompt
+              hasSipp={sippAccounts.length > 0}
+              hasPension={pensionAccounts.length > 0}
+            />
           )}
           <AccountSelector accounts={accounts} visibleIdSet={visibleIdSet} onToggle={toggleAccount} />
           <ViewTabs activeKey={view} onChange={setView} />
@@ -250,11 +274,12 @@ function labelForHorizon(months) {
   return `${months} months`;
 }
 
-function HorizonTabs({ activeKey, onChange, sippHorizonAvailable }) {
+function HorizonTabs({ activeKey, onChange, sippHorizonAvailable, pensionHorizonAvailable }) {
   return (
     <div className="flex items-center gap-1 rounded-md bg-muted p-1">
       {HORIZON_OPTIONS.map((opt) => {
         if (opt.key === 'sipp' && !sippHorizonAvailable) return null;
+        if (opt.key === 'pension' && !pensionHorizonAvailable) return null;
         return (
           <Button
             key={opt.key}
@@ -565,7 +590,7 @@ function ScenarioCard({
   );
 }
 
-function BirthYearPrompt() {
+function BirthYearPrompt({ hasSipp, hasPension }) {
   const dispatch = useDispatch();
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -589,12 +614,14 @@ function BirthYearPrompt() {
     }
   }
 
+  const targets = [hasSipp && 'SIPP', hasPension && 'pension'].filter(Boolean).join(' and ');
+
   return (
     <div className="rounded-md border border-border bg-muted/40 p-3 flex items-center gap-3 flex-wrap">
       <div className="text-sm flex-1 min-w-[220px]">
         <span className="font-medium">Tell us your birth year</span>{' '}
         <span className="text-muted-foreground">
-          to project your SIPP out to the qualifying age.
+          to project your {targets} out to the qualifying age.
         </span>
       </div>
       <div className="flex items-center gap-2">

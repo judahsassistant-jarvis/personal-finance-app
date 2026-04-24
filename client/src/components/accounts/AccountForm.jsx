@@ -151,6 +151,19 @@ export default function AccountForm({ mode, onClose }) {
               />
             </Field>
           )}
+          {form.subtype === ACCOUNT_SUBTYPES.PENSION && (
+            <Field label="Qualifying age" id="a-pension" error={errors.pension_age}>
+              <Input
+                id="a-pension"
+                type="number"
+                min={50}
+                max={75}
+                placeholder="e.g. 65"
+                value={form.pension_age}
+                onChange={(e) => setForm({ ...form, pension_age: e.target.value })}
+              />
+            </Field>
+          )}
           {showContribution && (
             <Field label="Monthly contribution (£)" id="a-contrib" error={errors.monthly_contribution}>
               <Input

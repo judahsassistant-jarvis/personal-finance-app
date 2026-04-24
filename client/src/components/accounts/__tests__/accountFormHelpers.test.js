@@ -53,6 +53,10 @@ describe('accountToForm', () => {
     const f = accountToForm({ subtype: ACCOUNT_SUBTYPES.SIPP, sipp_age: 58 });
     expect(f.sipp_age).toBe('58');
   });
+  it('surfaces pension_age', () => {
+    const f = accountToForm({ subtype: ACCOUNT_SUBTYPES.PENSION, pension_age: 65 });
+    expect(f.pension_age).toBe('65');
+  });
 });
 
 describe('applySubtypeChange', () => {
@@ -71,9 +75,14 @@ describe('applySubtypeChange', () => {
     expect(next.monthly_contribution).toBe('50');
   });
   it('clears sipp_age when leaving SIPP', () => {
-    const start = { name: '', subtype: ACCOUNT_SUBTYPES.SIPP, balance: '', rate: '5', sipp_age: '58', monthly_contribution: '', include_in_safe_to_spend: false };
+    const start = { name: '', subtype: ACCOUNT_SUBTYPES.SIPP, balance: '', rate: '5', sipp_age: '58', pension_age: '', monthly_contribution: '', include_in_safe_to_spend: false };
     const next = applySubtypeChange(start, ACCOUNT_SUBTYPES.SAVINGS);
     expect(next.sipp_age).toBe('');
+  });
+  it('clears pension_age when leaving PENSION', () => {
+    const start = { name: '', subtype: ACCOUNT_SUBTYPES.PENSION, balance: '', rate: '5', sipp_age: '', pension_age: '65', monthly_contribution: '', include_in_safe_to_spend: false };
+    const next = applySubtypeChange(start, ACCOUNT_SUBTYPES.SAVINGS);
+    expect(next.pension_age).toBe('');
   });
 });
 
@@ -81,7 +90,7 @@ describe('validateAccountForm', () => {
   function base(overrides = {}) {
     return {
       name: 'X', subtype: ACCOUNT_SUBTYPES.SAVINGS, balance: '1000',
-      rate: '4', sipp_age: '', monthly_contribution: '',
+      rate: '4', sipp_age: '', pension_age: '', monthly_contribution: '',
       include_in_safe_to_spend: false, ...overrides,
     };
   }
@@ -112,6 +121,12 @@ describe('validateAccountForm', () => {
     expect(validateAccountForm(base({ subtype: ACCOUNT_SUBTYPES.SIPP, sipp_age: '90' })).sipp_age).toBeTruthy();
     expect(validateAccountForm(base({ subtype: ACCOUNT_SUBTYPES.SIPP, sipp_age: '58' }))).toEqual({});
   });
+  it('PENSION requires pension_age in 50..75', () => {
+    expect(validateAccountForm(base({ subtype: ACCOUNT_SUBTYPES.PENSION })).pension_age).toBeTruthy();
+    expect(validateAccountForm(base({ subtype: ACCOUNT_SUBTYPES.PENSION, pension_age: '40' })).pension_age).toBeTruthy();
+    expect(validateAccountForm(base({ subtype: ACCOUNT_SUBTYPES.PENSION, pension_age: '90' })).pension_age).toBeTruthy();
+    expect(validateAccountForm(base({ subtype: ACCOUNT_SUBTYPES.PENSION, pension_age: '65' }))).toEqual({});
+  });
   it('rejects negative monthly_contribution for locked subtypes', () => {
     expect(validateAccountForm(base({ subtype: ACCOUNT_SUBTYPES.SS_ISA, monthly_contribution: '-100' })).monthly_contribution).toBeTruthy();
   });
@@ -121,7 +136,7 @@ describe('accountFormToPayload', () => {
   it('builds a savings payload with interest_rate decimal', () => {
     const payload = accountFormToPayload({
       name: ' Main ', subtype: ACCOUNT_SUBTYPES.SAVINGS, balance: '1500.25',
-      rate: '4.5', sipp_age: '', monthly_contribution: '100',
+      rate: '4.5', sipp_age: '', pension_age: '', monthly_contribution: '100',
       include_in_safe_to_spend: false,
     });
     expect(payload.name).toBe('Main');
@@ -134,7 +149,7 @@ describe('accountFormToPayload', () => {
   it('builds a SIPP payload with growth_rate + sipp_age', () => {
     const payload = accountFormToPayload({
       name: 'SIPP', subtype: ACCOUNT_SUBTYPES.SIPP, balance: '50000',
-      rate: '5', sipp_age: '58', monthly_contribution: '300',
+      rate: '5', sipp_age: '58', pension_age: '', monthly_contribution: '300',
       include_in_safe_to_spend: false,
     });
     expect(payload.liquidity).toBe(LIQUIDITY.LOCKED);
@@ -142,11 +157,23 @@ describe('accountFormToPayload', () => {
     expect(payload.sipp_age).toBe(58);
     expect(payload.monthly_contribution_pennies).toBe(30000);
     expect(payload).not.toHaveProperty('interest_rate');
+    expect(payload).not.toHaveProperty('pension_age');
+  });
+  it('builds a PENSION payload with growth_rate + pension_age', () => {
+    const payload = accountFormToPayload({
+      name: 'Workplace', subtype: ACCOUNT_SUBTYPES.PENSION, balance: '80000',
+      rate: '5', sipp_age: '', pension_age: '65', monthly_contribution: '500',
+      include_in_safe_to_spend: false,
+    });
+    expect(payload.liquidity).toBe(LIQUIDITY.LOCKED);
+    expect(payload.growth_rate).toBeCloseTo(0.05, 5);
+    expect(payload.pension_age).toBe(65);
+    expect(payload).not.toHaveProperty('sipp_age');
   });
   it('omits rate + contribution when blank for rate-bearing subtype', () => {
     const payload = accountFormToPayload({
       name: 'X', subtype: ACCOUNT_SUBTYPES.SAVINGS, balance: '100',
-      rate: '', sipp_age: '', monthly_contribution: '',
+      rate: '', sipp_age: '', pension_age: '', monthly_contribution: '',
       include_in_safe_to_spend: false,
     });
     expect(payload).not.toHaveProperty('interest_rate');
@@ -155,7 +182,7 @@ describe('accountFormToPayload', () => {
   it('current accounts produce no rate fields', () => {
     const payload = accountFormToPayload({
       name: 'C', subtype: ACCOUNT_SUBTYPES.CURRENT, balance: '100',
-      rate: '99', sipp_age: '', monthly_contribution: '',
+      rate: '99', sipp_age: '', pension_age: '', monthly_contribution: '',
       include_in_safe_to_spend: true,
     });
     expect(payload).not.toHaveProperty('interest_rate');
@@ -172,7 +199,7 @@ describe('accountFormToEditPatch', () => {
     };
     const form = {
       name: 'X', subtype: ACCOUNT_SUBTYPES.SAVINGS, balance: '0',
-      rate: '', sipp_age: '', monthly_contribution: '',
+      rate: '', sipp_age: '', pension_age: '', monthly_contribution: '',
       include_in_safe_to_spend: false,
     };
     const patch = accountFormToEditPatch(form, existing);
@@ -186,13 +213,27 @@ describe('accountFormToEditPatch', () => {
     };
     const form = {
       name: 'X', subtype: ACCOUNT_SUBTYPES.SAVINGS, balance: '100',
-      rate: '4', sipp_age: '', monthly_contribution: '',
+      rate: '4', sipp_age: '', pension_age: '', monthly_contribution: '',
       include_in_safe_to_spend: false,
     };
     const patch = accountFormToEditPatch(form, existing);
     expect(patch.interest_rate).toBeCloseTo(0.04, 5);
     expect(patch.growth_rate).toBeNull();
     expect(patch.sipp_age).toBeNull();
+  });
+  it('nulls pension_age when subtype changes off PENSION', () => {
+    const existing = {
+      subtype: ACCOUNT_SUBTYPES.PENSION,
+      growth_rate: 0.05, pension_age: 65,
+    };
+    const form = {
+      name: 'X', subtype: ACCOUNT_SUBTYPES.SAVINGS, balance: '100',
+      rate: '4', sipp_age: '', pension_age: '', monthly_contribution: '',
+      include_in_safe_to_spend: false,
+    };
+    const patch = accountFormToEditPatch(form, existing);
+    expect(patch.pension_age).toBeNull();
+    expect(patch.growth_rate).toBeNull();
   });
 });
 

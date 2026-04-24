@@ -231,6 +231,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {number} [interest_rate] - decimal; for savings / cash_isa
  * @property {number} [growth_rate] - decimal; for ss_isa / sipp / investment / pension
  * @property {number} [sipp_age] - qualifying age in years; for SIPP only
+ * @property {number} [pension_age] - qualifying age in years; for PENSION only
  * @property {number} [monthly_contribution_pennies] - optional auto-contribution used in Forecast
  * @property {import('firebase/firestore').FieldValue} created
  */
@@ -363,6 +364,7 @@ export function newAccountDoc({
   interest_rate,
   growth_rate,
   sipp_age,
+  pension_age,
   monthly_contribution_pennies,
   include_in_safe_to_spend,
 }) {
@@ -385,6 +387,9 @@ export function newAccountDoc({
   }
   if (subtype === ACCOUNT_SUBTYPES.SIPP && sipp_age != null) {
     doc.sipp_age = sipp_age;
+  }
+  if (subtype === ACCOUNT_SUBTYPES.PENSION && pension_age != null) {
+    doc.pension_age = pension_age;
   }
   if (monthly_contribution_pennies != null) {
     doc.monthly_contribution_pennies = monthly_contribution_pennies;
