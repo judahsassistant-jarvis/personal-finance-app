@@ -5,7 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:emulators\" \"npm run dev:client\"",
-    "dev:emulators": "firebase emulators:start --only auth,firestore,functions,hosting",
+    "dev:emulators": "firebase emulators:start --only auth,firestore,functions,hosting --import=./dev-data --export-on-exit=./dev-data",
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm run build",
     "deploy": "firebase deploy",
