@@ -127,10 +127,11 @@ The Cloud Functions write to `/mail`. Actual email delivery requires the **Fireb
 
 ## 7. Known gaps — not yet testable
 
-- **CSV import (`/import` page).** Stubbed as Coming Soon. Phase 1's csvParser logic ported in Sprint 3 but the import UI was never rebuilt for Firebase. Defer to the 2a → 2b transition when Open Banking is evaluated.
-- **Transactions / Budgets pages partially stubbed.** Transactions has tag + filter but no CSV ingest; Budgets is empty. Not blockers for dogfood (you'll work from seed + hand-edits via emulator UI).
-- **Real-data UAT.** Once Accounts CRUD lands, run through this checklist with Judah's actual accounts / debts / bank CSVs and verify the forecast + discretionary + reminder numbers against reality.
-- **Post-dogfood sprint:** gather any bugs / UX friction into a 2a.5 cleanup sprint before making 2b go/no-go decision.
+- **CSV import (`/import` page).** Stubbed as Coming Soon. Phase 1's csvParser logic ported in Sprint 3 but the import UI was never rebuilt for Firebase. **Now scheduled as Sprint 11 (dogfood-readiness bridge) — see PHASE-2-PLAN.md.** Includes a full audit + rework of the ported parser before wiring the UI. Real-data dogfood depends on this.
+- **Budgets page stubbed.** Empty. Not a dogfood blocker for 2a.
+- **Real-data UAT.** Depends on Sprint 11 landing. Then run through this checklist with real accounts / debts / bank CSVs and verify the forecast + discretionary + reminder numbers against reality.
+- **Post-dogfood sprint:** gather any bugs / UX friction from the Sprint 11 dogfood run into a cleanup pass before making 2b go/no-go decision.
+- **Production email delivery (Section 6 subsection)** deferred indefinitely — Judah decided 2026-04-24 it should not block further development. Functions queue `/mail` docs in both emulator and prod; bolt the firestore-send-email extension on when prod is set up.
 
 ---
 
