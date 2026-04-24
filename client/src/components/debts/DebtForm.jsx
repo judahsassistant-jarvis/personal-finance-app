@@ -160,9 +160,9 @@ export default function DebtForm({ editingDebt, onClose }) {
 
             {isCardLike && (
               <>
-                <LabeledField label="Min payment %" error={errors.min_percentage} hint="e.g. 2 for 2%">
+                <LabeledField label="Min payment %" error={errors.min_percentage} hint="e.g. 2.25 for 2.25%">
                   <Input
-                    type="number" step="0.1" min="0" max="100"
+                    type="number" step="0.01" min="0" max="100"
                     value={form.min_percentage}
                     onChange={(e) => field('min_percentage', e.target.value)}
                   />
