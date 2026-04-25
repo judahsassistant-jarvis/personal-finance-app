@@ -102,8 +102,27 @@ const CATEGORY_RULES = {
   Subscriptions: ['Netflix', 'Disney+', 'Spotify', 'Amazon Prime', 'YouTube', 'Apple', 'Dropbox', 'OpenAI ChatGPT', 'Uber One', 'Experian', 'Google Play'],
   Transport: ['Uber', 'Shell', 'BP', 'Esso', 'NCP Parking', 'TfL', 'DVLA', 'Esure Motor', 'RAC'],
   Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
+  Cash: ['ATM', 'NoteMachine', 'LINK', 'Cashpoint', 'Cash Withdrawal'],
   Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal'],
 };
+
+/**
+ * The fixed list of categories surfaced in the Transactions UI category
+ * picker. Order matters — drives dropdown order. "Debt Payment" is
+ * special-cased: applied automatically when a transaction is tagged to
+ * a debt, never user-selected from this list.
+ */
+export const KNOWN_CATEGORIES = [
+  'Bills',
+  'Cash',
+  'Food',
+  'Health',
+  'Payments',
+  'Shopping',
+  'Subscriptions',
+  'Transport',
+  'Other',
+];
 
 export function autoCategorize(merchantName) {
   if (!merchantName) return 'Other';

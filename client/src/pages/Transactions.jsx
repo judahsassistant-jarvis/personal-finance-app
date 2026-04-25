@@ -7,6 +7,7 @@ import { fetchAccounts } from '../store/accountsSlice.js';
 import { fetchRecurringBills, removeRecurringBill } from '../store/recurringBillsSlice.js';
 import { suggestTagsForUntagged } from '../services/debtPaymentMatcher.js';
 import { findMatchingRecurringBill } from '../services/recurringBills.js';
+import { KNOWN_CATEGORIES } from '../services/csvParser.js';
 import { formatGBP } from '../firebase/schema.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
 import { Badge } from '../components/ui/badge.jsx';
@@ -61,6 +62,11 @@ export default function Transactions() {
     suggestions: transactions.filter((t) => suggestions.has(t.id)).length,
     'debt-payments': transactions.filter((t) => t.debt_id).length,
   }), [transactions, suggestions]);
+
+  const handleRecategorize = async (tx, category) => {
+    if (!category || category === tx.category) return;
+    await dispatch(editTransaction({ id: tx.id, category })).unwrap();
+  };
 
   const handleTag = async (tx, debtId) => {
     await dispatch(editTransaction({
@@ -163,6 +169,7 @@ export default function Transactions() {
                       accountById={accountById}
                       debts={debts}
                       onTag={handleTag}
+                      onRecategorize={handleRecategorize}
                     />
                   ))}
                 </tbody>
@@ -175,7 +182,7 @@ export default function Transactions() {
   );
 }
 
-function TransactionRow({ tx, suggestion, debtById, accountById, debts, onTag }) {
+function TransactionRow({ tx, suggestion, debtById, accountById, debts, onTag, onRecategorize }) {
   const amount = Number(tx.amount_pennies || 0);
   const isInflow = amount > 0;
   const tagged = tx.debt_id;
@@ -196,7 +203,10 @@ function TransactionRow({ tx, suggestion, debtById, accountById, debts, onTag })
         {tagged ? (
           <Badge variant="accent">Debt Payment</Badge>
         ) : (
-          <span className="text-muted-foreground">{tx.category || '—'}</span>
+          <CategoryPicker
+            value={tx.category || 'Other'}
+            onChange={(c) => onRecategorize(tx, c)}
+          />
         )}
       </td>
       <td className={`py-2 px-3 text-right tabular-nums font-mono ${isInflow ? 'text-positive' : ''}`}>
@@ -262,6 +272,25 @@ function DebtPicker({ debts, value, onChange, placeholder }) {
       <option value="">{placeholder}</option>
       {debts.map((d) => (
         <option key={d.id} value={d.id}>{d.name}</option>
+      ))}
+    </select>
+  );
+}
+
+function CategoryPicker({ value, onChange }) {
+  // Falls through to "Other" if the stored value isn't in the known list
+  // (e.g. legacy data with a deprecated category name) — surfacing it as
+  // "Other" rather than blank avoids silently breaking the dropdown.
+  const known = KNOWN_CATEGORIES.includes(value) ? value : 'Other';
+  return (
+    <select
+      value={known}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-7 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground hover:text-foreground"
+      title="Recategorise"
+    >
+      {KNOWN_CATEGORIES.map((c) => (
+        <option key={c} value={c}>{c}</option>
       ))}
     </select>
   );

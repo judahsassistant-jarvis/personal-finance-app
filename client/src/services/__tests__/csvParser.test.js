@@ -7,6 +7,7 @@ import {
   isKnownRecurring,
   detectRecurringBills,
   parseCSV,
+  KNOWN_CATEGORIES,
 } from '../csvParser.js';
 
 describe('normalizeMerchant', () => {
@@ -113,6 +114,19 @@ describe('autoCategorize', () => {
   test('payments', () => {
     expect(autoCategorize('Amex')).toBe('Payments');
     expect(autoCategorize('Zopa')).toBe('Payments');
+  });
+  test('cash withdrawals → Cash', () => {
+    expect(autoCategorize('ATM Withdrawal Notemachine Ltd')).toBe('Cash');
+    expect(autoCategorize('LINK ATM')).toBe('Cash');
+    expect(autoCategorize('Cashpoint')).toBe('Cash');
+  });
+});
+
+describe('KNOWN_CATEGORIES', () => {
+  test('exposes the fixed UI category list including Cash + Other', () => {
+    expect(KNOWN_CATEGORIES).toContain('Cash');
+    expect(KNOWN_CATEGORIES).toContain('Other');
+    expect(KNOWN_CATEGORIES).toContain('Bills');
   });
   test('health', () => {
     expect(autoCategorize('Lords Pharmacy')).toBe('Health');
