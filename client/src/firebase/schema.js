@@ -218,6 +218,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {'free' | 'pro'} tier
  * @property {boolean} onboarding_complete - false on first sign-in; set true when the user exits the first-run wizard (Sprint 5). Gate for redirecting to /welcome.
  * @property {number} [birth_year] - optional. Only used to compute the SIPP qualifying-age horizon on the Forecast page (Sprint 6). When absent, SIPP horizon falls back to the default 12-month view.
+ * @property {string[]} [custom_categories] - optional. User-defined Transactions categories on top of the built-in `KNOWN_CATEGORIES` list. Managed via the "Manage categories" panel on the Transactions page (Sprint 11.4 follow-up).
  * @property {import('firebase/firestore').FieldValue} created
  */
 

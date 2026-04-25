@@ -100,23 +100,32 @@ const CATEGORY_RULES = {
   Food: ['Uber Eats', 'Deliveroo', 'Just Eat', 'McDonalds', 'Burger King', 'KFC', 'Nandos', 'Costa Coffee', 'Starbucks', 'Greggs', 'Subway'],
   Bills: ['EDF Energy', 'Fuse Energy', 'Octopus Energy', 'BT', 'Virgin', 'Utility Warehouse', 'Thames Water', 'Council Tax', 'TV Licence', 'Sky', 'Sky Protect'],
   Subscriptions: ['Netflix', 'Disney+', 'Spotify', 'Amazon Prime', 'YouTube', 'Apple', 'Dropbox', 'OpenAI ChatGPT', 'Uber One', 'Experian', 'Google Play'],
-  Transport: ['Uber', 'Shell', 'BP', 'Esso', 'NCP Parking', 'TfL', 'DVLA', 'Esure Motor', 'RAC'],
+  Transport: ['Uber', 'Shell', 'BP', 'Esso', 'NCP Parking', 'TfL', 'DVLA', 'RAC'],
+  Insurance: ['Esure', 'Aviva', 'AXA', 'Admiral', 'Direct Line', 'LV=', 'Liverpool Victoria', 'AA Insurance', 'Hastings Direct', 'More Than'],
+  Income: ['HMRC', 'Tax Refund', 'Salary'],
+  Charity: [],
   Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
   Cash: ['ATM', 'NoteMachine', 'LINK', 'Cashpoint', 'Cash Withdrawal'],
   Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal'],
 };
 
 /**
- * The fixed list of categories surfaced in the Transactions UI category
- * picker. Order matters — drives dropdown order. "Debt Payment" is
- * special-cased: applied automatically when a transaction is tagged to
- * a debt, never user-selected from this list.
+ * Built-in categories surfaced in the Transactions UI category picker. User-
+ * defined custom categories are merged on top in the UI (see
+ * mergedCategories in Transactions.jsx).
+ *
+ * Order matters — drives dropdown order. "Debt Payment" is special-cased:
+ * applied automatically when a transaction is tagged to a debt, never
+ * user-selected from this list.
  */
 export const KNOWN_CATEGORIES = [
   'Bills',
   'Cash',
+  'Charity',
   'Food',
   'Health',
+  'Income',
+  'Insurance',
   'Payments',
   'Shopping',
   'Subscriptions',

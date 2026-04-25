@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Sparkles, Check, X as XIcon } from 'lucide-react';
+import { Sparkles, Check, X as XIcon, Search, Tag, Plus } from 'lucide-react';
 import { fetchTransactions, editTransaction, bulkRecategorize } from '../store/transactionsSlice.js';
 import { fetchDebts } from '../store/debtsSlice.js';
 import { fetchAccounts } from '../store/accountsSlice.js';
 import { fetchRecurringBills, removeRecurringBill } from '../store/recurringBillsSlice.js';
 import { fetchCategoryRules, addCategoryRule } from '../store/categoryRulesSlice.js';
+import { updateProfile } from '../store/authSlice.js';
 import { suggestTagsForUntagged } from '../services/debtPaymentMatcher.js';
 import { findMatchingRecurringBill } from '../services/recurringBills.js';
 import { KNOWN_CATEGORIES } from '../services/csvParser.js';
@@ -13,6 +14,7 @@ import { formatGBP } from '../firebase/schema.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
 import { Badge } from '../components/ui/badge.jsx';
 import { Button } from '../components/ui/button.jsx';
+import { Input } from '../components/ui/input.jsx';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -27,9 +29,24 @@ export default function Transactions() {
   const debts = useSelector((s) => s.debts.items);
   const accounts = useSelector((s) => s.accounts.items);
   const recurringBills = useSelector((s) => s.recurringBills.items);
+  const profile = useSelector((s) => s.auth.profile);
   const loading = useSelector((s) => s.transactions.loading);
 
   const [filter, setFilter] = useState('all');
+  const [searchText, setSearchText] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [accountFilter, setAccountFilter] = useState('all');
+  const [showManageCategories, setShowManageCategories] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+
+  const customCategories = profile?.custom_categories ?? [];
+  const allCategories = useMemo(() => {
+    const merged = new Set([...KNOWN_CATEGORIES, ...customCategories]);
+    return [...merged].sort((a, b) => a.localeCompare(b));
+  }, [customCategories]);
 
   useEffect(() => {
     dispatch(fetchTransactions());
@@ -54,9 +71,12 @@ export default function Transactions() {
   );
 
   const filtered = useMemo(() => {
-    const rows = filterRows(transactions, filter, suggestions);
+    let rows = filterRows(transactions, filter, suggestions);
+    rows = applyFilterControls(rows, {
+      searchText, dateFrom, dateTo, minAmount, maxAmount, accountFilter,
+    });
     return rows.slice().sort(byDateDesc);
-  }, [transactions, filter, suggestions]);
+  }, [transactions, filter, suggestions, searchText, dateFrom, dateTo, minAmount, maxAmount, accountFilter]);
 
   const counts = useMemo(() => ({
     all: transactions.length,
@@ -104,6 +124,24 @@ export default function Transactions() {
       })).unwrap();
     }
     await dispatch(addCategoryRule({ merchant: tx.merchant, category })).unwrap();
+  };
+
+  const handleAddCategory = async () => {
+    const name = newCategoryInput.trim();
+    if (!name) return;
+    if (allCategories.some((c) => c.toLowerCase() === name.toLowerCase())) {
+      setNewCategoryInput('');
+      return; // already exists (built-in or custom) — silent no-op
+    }
+    const next = [...customCategories, name];
+    await dispatch(updateProfile({ custom_categories: next })).unwrap();
+    setNewCategoryInput('');
+  };
+
+  const handleRemoveCategory = async (name) => {
+    if (!window.confirm(`Remove custom category "${name}"? Transactions tagged with it will fall back to "Other".`)) return;
+    const next = customCategories.filter((c) => c !== name);
+    await dispatch(updateProfile({ custom_categories: next })).unwrap();
   };
 
   const handleTag = async (tx, debtId) => {
@@ -171,6 +209,37 @@ export default function Transactions() {
         ))}
       </div>
 
+      <FilterControls
+        searchText={searchText}
+        setSearchText={setSearchText}
+        dateFrom={dateFrom}
+        setDateFrom={setDateFrom}
+        dateTo={dateTo}
+        setDateTo={setDateTo}
+        minAmount={minAmount}
+        setMinAmount={setMinAmount}
+        maxAmount={maxAmount}
+        setMaxAmount={setMaxAmount}
+        accountFilter={accountFilter}
+        setAccountFilter={setAccountFilter}
+        accounts={accounts}
+        showManageCategories={showManageCategories}
+        setShowManageCategories={setShowManageCategories}
+        filteredCount={filtered.length}
+        totalCount={transactions.length}
+      />
+
+      {showManageCategories && (
+        <ManageCategoriesPanel
+          builtIns={KNOWN_CATEGORIES}
+          customs={customCategories}
+          newCategoryInput={newCategoryInput}
+          setNewCategoryInput={setNewCategoryInput}
+          onAdd={handleAddCategory}
+          onRemove={handleRemoveCategory}
+        />
+      )}
+
       {filtered.length === 0 ? (
         <Card>
           <CardHeader>
@@ -206,6 +275,7 @@ export default function Transactions() {
                       debtById={debtById}
                       accountById={accountById}
                       debts={debts}
+                      categories={allCategories}
                       onTag={handleTag}
                       onRecategorize={handleRecategorize}
                     />
@@ -220,7 +290,7 @@ export default function Transactions() {
   );
 }
 
-function TransactionRow({ tx, suggestion, debtById, accountById, debts, onTag, onRecategorize }) {
+function TransactionRow({ tx, suggestion, debtById, accountById, debts, categories, onTag, onRecategorize }) {
   const amount = Number(tx.amount_pennies || 0);
   const isInflow = amount > 0;
   const tagged = tx.debt_id;
@@ -244,6 +314,7 @@ function TransactionRow({ tx, suggestion, debtById, accountById, debts, onTag, o
           <CategoryPicker
             value={tx.category || 'Other'}
             onChange={(c) => onRecategorize(tx, c)}
+            categories={categories}
           />
         )}
       </td>
@@ -300,6 +371,176 @@ function TransactionRow({ tx, suggestion, debtById, accountById, debts, onTag, o
   );
 }
 
+function FilterControls({
+  searchText, setSearchText,
+  dateFrom, setDateFrom,
+  dateTo, setDateTo,
+  minAmount, setMinAmount,
+  maxAmount, setMaxAmount,
+  accountFilter, setAccountFilter,
+  accounts,
+  showManageCategories, setShowManageCategories,
+  filteredCount, totalCount,
+}) {
+  const hasFilters =
+    searchText || dateFrom || dateTo || minAmount !== '' || maxAmount !== '' || accountFilter !== 'all';
+
+  function clearAll() {
+    setSearchText('');
+    setDateFrom('');
+    setDateTo('');
+    setMinAmount('');
+    setMaxAmount('');
+    setAccountFilter('all');
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-3 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 items-center">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search merchant, description, category…"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="pl-8 h-8"
+            />
+          </div>
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-8 text-xs w-36"
+            title="From date"
+          />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-8 text-xs w-36"
+            title="To date"
+          />
+          <Input
+            type="number"
+            inputMode="decimal"
+            placeholder="Min £"
+            value={minAmount}
+            onChange={(e) => setMinAmount(e.target.value)}
+            className="h-8 text-xs w-24"
+            step="0.01"
+            min="0"
+          />
+          <Input
+            type="number"
+            inputMode="decimal"
+            placeholder="Max £"
+            value={maxAmount}
+            onChange={(e) => setMaxAmount(e.target.value)}
+            className="h-8 text-xs w-24"
+            step="0.01"
+            min="0"
+          />
+          <select
+            value={accountFilter}
+            onChange={(e) => setAccountFilter(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            title="Account"
+          >
+            <option value="all">All accounts</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground flex-wrap">
+          <span>
+            Showing <span className="font-medium text-foreground">{filteredCount}</span> of {totalCount} transactions
+          </span>
+          <div className="flex items-center gap-2">
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={clearAll} className="h-7 text-xs">
+                Clear filters
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowManageCategories((v) => !v)}
+              className="h-7 text-xs"
+            >
+              <Tag className="w-3 h-3 mr-1" />
+              {showManageCategories ? 'Hide categories' : 'Manage categories'}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ManageCategoriesPanel({ builtIns, customs, newCategoryInput, setNewCategoryInput, onAdd, onRemove }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Categories</CardTitle>
+        <CardDescription>
+          Built-in categories are read-only. Custom categories appear in the dropdown alongside the built-ins
+          and persist to your profile — they're available across all your devices.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">Built-in</div>
+          <div className="flex flex-wrap gap-1.5">
+            {builtIns.map((c) => (
+              <Badge key={c} variant="secondary" className="text-xs">{c}</Badge>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">Custom</div>
+          {customs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">None yet — add one below.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {customs.map((c) => (
+                <Badge key={c} variant="default" className="text-xs flex items-center gap-1">
+                  {c}
+                  <button
+                    type="button"
+                    onClick={() => onRemove(c)}
+                    title={`Remove "${c}"`}
+                    className="-mr-1 ml-0.5 opacity-60 hover:opacity-100"
+                  >
+                    <XIcon className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+        <form
+          onSubmit={(e) => { e.preventDefault(); onAdd(); }}
+          className="flex gap-2 items-center"
+        >
+          <Input
+            placeholder="New category name"
+            value={newCategoryInput}
+            onChange={(e) => setNewCategoryInput(e.target.value)}
+            className="h-8 max-w-xs"
+            maxLength={30}
+          />
+          <Button type="submit" size="sm" variant="accent" disabled={!newCategoryInput.trim()}>
+            <Plus className="w-3 h-3 mr-1" />Add
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DebtPicker({ debts, value, onChange, placeholder }) {
   return (
     <select
@@ -315,11 +556,12 @@ function DebtPicker({ debts, value, onChange, placeholder }) {
   );
 }
 
-function CategoryPicker({ value, onChange }) {
-  // Falls through to "Other" if the stored value isn't in the known list
-  // (e.g. legacy data with a deprecated category name) — surfacing it as
-  // "Other" rather than blank avoids silently breaking the dropdown.
-  const known = KNOWN_CATEGORIES.includes(value) ? value : 'Other';
+function CategoryPicker({ value, onChange, categories }) {
+  // Falls through to "Other" if the stored value isn't in the active list
+  // (e.g. a custom category was deleted while transactions still reference it,
+  // or legacy data with a deprecated name). Surfacing as "Other" rather than
+  // blank avoids silently breaking the dropdown.
+  const known = categories.includes(value) ? value : 'Other';
   return (
     <select
       value={known}
@@ -327,7 +569,7 @@ function CategoryPicker({ value, onChange }) {
       className="h-7 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground hover:text-foreground"
       title="Recategorise"
     >
-      {KNOWN_CATEGORIES.map((c) => (
+      {categories.map((c) => (
         <option key={c} value={c}>{c}</option>
       ))}
     </select>
@@ -345,6 +587,54 @@ function filterRows(transactions, filter, suggestions) {
     default:
       return transactions;
   }
+}
+
+/**
+ * Layer the search-box + date / amount / account filter controls on top of
+ * the tab-level filter. Each control is opt-in; blank values mean "no filter."
+ */
+function applyFilterControls(rows, { searchText, dateFrom, dateTo, minAmount, maxAmount, accountFilter }) {
+  let out = rows;
+
+  const q = searchText.trim().toLowerCase();
+  if (q) {
+    out = out.filter((t) => {
+      const merchant = (t.merchant || '').toLowerCase();
+      const description = (t.description || '').toLowerCase();
+      const category = (t.category || '').toLowerCase();
+      return merchant.includes(q) || description.includes(q) || category.includes(q);
+    });
+  }
+
+  const fromMs = dateFrom ? new Date(dateFrom).getTime() : null;
+  const toMs = dateTo ? new Date(dateTo).getTime() + 86_400_000 - 1 : null; // inclusive end-of-day
+  if (fromMs != null || toMs != null) {
+    out = out.filter((t) => {
+      const ms = toMillis(t.date);
+      if (fromMs != null && ms < fromMs) return false;
+      if (toMs != null && ms > toMs) return false;
+      return true;
+    });
+  }
+
+  // Amount range filters use absolute pennies — easier to reason about than
+  // signed values when the user types a range like "10 to 50."
+  const minP = minAmount === '' ? null : Math.round(Number(minAmount) * 100);
+  const maxP = maxAmount === '' ? null : Math.round(Number(maxAmount) * 100);
+  if (Number.isFinite(minP) || Number.isFinite(maxP)) {
+    out = out.filter((t) => {
+      const abs = Math.abs(Number(t.amount_pennies || 0));
+      if (Number.isFinite(minP) && abs < minP) return false;
+      if (Number.isFinite(maxP) && abs > maxP) return false;
+      return true;
+    });
+  }
+
+  if (accountFilter && accountFilter !== 'all') {
+    out = out.filter((t) => t.account_id === accountFilter);
+  }
+
+  return out;
 }
 
 function byDateDesc(a, b) {

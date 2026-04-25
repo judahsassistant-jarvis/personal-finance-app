@@ -146,10 +146,22 @@ describe('autoCategorize', () => {
 });
 
 describe('KNOWN_CATEGORIES', () => {
-  test('exposes the fixed UI category list including Cash + Other', () => {
+  test('exposes the fixed UI category list', () => {
     expect(KNOWN_CATEGORIES).toContain('Cash');
     expect(KNOWN_CATEGORIES).toContain('Other');
     expect(KNOWN_CATEGORIES).toContain('Bills');
+    expect(KNOWN_CATEGORIES).toContain('Income');
+    expect(KNOWN_CATEGORIES).toContain('Charity');
+    expect(KNOWN_CATEGORIES).toContain('Insurance');
+  });
+  test('insurance providers categorise as Insurance', () => {
+    expect(autoCategorize('Aviva')).toBe('Insurance');
+    expect(autoCategorize('Admiral')).toBe('Insurance');
+    expect(autoCategorize('Esure Motor')).toBe('Insurance');
+  });
+  test('HMRC and salary categorise as Income', () => {
+    expect(autoCategorize('HMRC')).toBe('Income');
+    expect(autoCategorize('TAX REFUND HMRC')).toBe('Income');
   });
   test('health', () => {
     expect(autoCategorize('Lords Pharmacy')).toBe('Health');
