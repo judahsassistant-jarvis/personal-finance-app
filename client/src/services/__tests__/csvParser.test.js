@@ -264,6 +264,38 @@ describe('parseCSV', () => {
     expect(interest.amount_pennies).toBe(-6717);
   });
 
+  test('extracts `#`-prefixed metadata into result.metadata for the Import UI preview', () => {
+    const csv = [
+      '#bank: Virgin Money',
+      '#account_type: credit_card',
+      '#period_start: 2026-03-07',
+      '#period_end: 2026-04-06',
+      '#opening_balance: 2925.96',
+      '#closing_balance: 3134.60',
+      '#balance_check: OK',
+      '#credit_limit: 3200.00',
+      'Date,Description,Amount',
+      '2026-03-08,PAYMENT RECEIVED,200.00',
+    ].join('\n');
+    const result = parseCSV(csv, 'acct-vm');
+    expect(result.metadata).toEqual({
+      bank: 'Virgin Money',
+      account_type: 'credit_card',
+      period_start: '2026-03-07',
+      period_end: '2026-04-06',
+      opening_balance: '2925.96',
+      closing_balance: '3134.60',
+      balance_check: 'OK',
+      credit_limit: '3200.00',
+    });
+  });
+
+  test('result.metadata is empty {} when no #-prefixed lines are present', () => {
+    const csv = ['Date,Description,Amount', '2026-03-08,FOO,-10.00'].join('\n');
+    const result = parseCSV(csv, 'acct-1');
+    expect(result.metadata).toEqual({});
+  });
+
   test('a `#` inside a transaction description does not get stripped', () => {
     // `#1234` appears in the TESCO merchant text — must survive the metadata stripper
     // because only lines *starting* with `#` are treated as comments.

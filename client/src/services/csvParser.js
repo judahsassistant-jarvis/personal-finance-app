@@ -289,13 +289,19 @@ export function parseCSV(fileContent, accountId, { importBatchId } = {}) {
   // `#`-prefixed comment lines emitted by the Claude-statement flow
   // (see docs/claude-statement-prompt.md). Stops at the first non-matching
   // line — a data row starting with a date won't accidentally be skipped.
+  // The `#`-prefixed lines also get parsed into a metadata object so the
+  // Import UI can show #balance_check, #bank, etc. in the preview pane.
   const lines = content.split('\n');
   let startIdx = 0;
   const MAX_METADATA_LINES = 50;
+  const metadata = {};
   for (let i = 0; i < Math.min(lines.length, MAX_METADATA_LINES); i++) {
     const line = lines[i].trim();
-    if (
-      line.startsWith('#') ||
+    if (line.startsWith('#')) {
+      const match = line.match(/^#([\w_]+):\s*(.*)$/);
+      if (match) metadata[match[1]] = match[2].trim();
+      startIdx = i + 1;
+    } else if (
       line.startsWith('Account Name:') ||
       line.startsWith('Account Balance:') ||
       line.startsWith('Available Balance:') ||
@@ -361,6 +367,7 @@ export function parseCSV(fileContent, accountId, { importBatchId } = {}) {
       .filter((t) => t.amount_pennies > 0)
       .reduce((s, t) => s + t.amount_pennies, 0),
     recurring_bills: recurringBills,
+    metadata,
     transactions,
   };
 }
