@@ -7,6 +7,7 @@ import {
   updateDocById,
   deleteDocById,
   batchCreate,
+  batchUpdate,
 } from '../firebase/helpers.js';
 import { parseCSV } from '../services/csvParser.js';
 
@@ -36,12 +37,28 @@ export const removeTransaction = createAsyncThunk('transactions/remove', async (
 });
 
 /**
- * Parse a CSV file in the browser. Keeps the result in state for review before
- * committing with confirmImport.
+ * Apply the same category to many transactions in one Firestore commit.
+ * Used by the Transactions page when the user opts to "apply to all matching"
+ * after recategorising a single row.
  */
-export const parseCSVFile = createAsyncThunk('transactions/parseCSV', async ({ file, accountId }) => {
+export const bulkRecategorize = createAsyncThunk(
+  'transactions/bulkRecategorize',
+  async ({ ids, category }) => {
+    const updates = ids.map((id) => ({ id, category }));
+    await batchUpdate(COLLECTION, updates);
+    return { ids, category };
+  },
+);
+
+/**
+ * Parse a CSV file in the browser. Keeps the result in state for review before
+ * committing with confirmImport. User category rules (if loaded) take precedence
+ * over the parser's hardcoded merchant->category map.
+ */
+export const parseCSVFile = createAsyncThunk('transactions/parseCSV', async ({ file, accountId }, { getState }) => {
   const text = await file.text();
-  return parseCSV(text, accountId);
+  const userRules = getState().categoryRules?.items ?? [];
+  return parseCSV(text, accountId, { userRules });
 });
 
 /** Commit the previewed import results to Firestore via a batched write. */
@@ -85,6 +102,13 @@ const slice = createSlice({
     });
     b.addCase(removeTransaction.fulfilled, (s, a) => {
       s.items = s.items.filter((x) => x.id !== a.payload);
+    });
+    b.addCase(bulkRecategorize.fulfilled, (s, a) => {
+      const { ids, category } = a.payload;
+      const idSet = new Set(ids);
+      for (const t of s.items) {
+        if (idSet.has(t.id)) t.category = category;
+      }
     });
     b.addCase(parseCSVFile.pending, (s) => { s.importLoading = true; s.error = null; });
     b.addCase(parseCSVFile.fulfilled, (s, a) => { s.importLoading = false; s.importResult = a.payload; });

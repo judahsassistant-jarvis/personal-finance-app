@@ -124,16 +124,34 @@ export const KNOWN_CATEGORIES = [
   'Other',
 ];
 
-export function autoCategorize(merchantName) {
+/**
+ * Pick a category for a merchant.
+ *
+ * `userRules`, when supplied, takes precedence over the hardcoded list. Each
+ * rule is `{merchant, category}`; the match is exact (case-insensitive) on
+ * the normalised merchant name. The first matching rule wins. Falling through
+ * to the hardcoded `CATEGORY_RULES` keeps Phase 2a's defaults working for
+ * unknown merchants without forcing the user to write a rule for everything.
+ *
+ * @param {string} merchantName - normalised merchant name
+ * @param {Array<{merchant: string, category: string}>} [userRules]
+ */
+export function autoCategorize(merchantName, userRules = []) {
   if (!merchantName) return 'Other';
-  const upper = merchantName.toUpperCase();
+  const upperMerchant = merchantName.toUpperCase();
+
+  for (const rule of userRules) {
+    if (!rule?.merchant || !rule?.category) continue;
+    if (rule.merchant.toUpperCase() === upperMerchant) return rule.category;
+  }
+
   const allMappings = [];
   for (const [category, merchants] of Object.entries(CATEGORY_RULES)) {
     for (const m of merchants) allMappings.push({ merchant: m, category });
   }
   allMappings.sort((a, b) => b.merchant.length - a.merchant.length);
   for (const { merchant, category } of allMappings) {
-    if (upper.includes(merchant.toUpperCase())) return category;
+    if (upperMerchant.includes(merchant.toUpperCase())) return category;
   }
   return 'Other';
 }
@@ -295,7 +313,7 @@ function parseRow(row, format, headers) {
  * @param {string} [opts.importBatchId] - tag all transactions with this batch id
  * @returns {{format: string, batch_id: string, transactions: Object[], recurring_bills: Object[], total_debit_pennies: number, total_credit_pennies: number, count: number}}
  */
-export function parseCSV(fileContent, accountId, { importBatchId } = {}) {
+export function parseCSV(fileContent, accountId, { importBatchId, userRules = [] } = {}) {
   if (typeof fileContent !== 'string') {
     throw new Error('parseCSV expects text content, not a File object. Use file.text() first.');
   }
@@ -355,7 +373,7 @@ export function parseCSV(fileContent, accountId, { importBatchId } = {}) {
     const result = parseRow(row, format, headers);
     if (!result || !result.date) continue;
 
-    const autoCategory = autoCategorize(result.merchant);
+    const autoCategory = autoCategorize(result.merchant, userRules);
     const autoRecurring = isKnownRecurring(result.merchant);
     const amountPennies = poundsToPennies(result.amount);
 

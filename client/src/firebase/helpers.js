@@ -111,3 +111,23 @@ export async function batchCreate(collectionName, userId, dataArray) {
     user_id: userId,
   }));
 }
+
+/**
+ * Update many docs in a single Firestore commit.
+ *
+ * @param {string} collectionName
+ * @param {Array<{id: string, [field: string]: any}>} updates - each entry must
+ *   include `id`; remaining fields are written via update().
+ * @returns {Promise<Array<{id: string}>>} the input updates, one per row, useful
+ *   for the slice's optimistic-update extraReducer.
+ */
+export async function batchUpdate(collectionName, updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return [];
+  const batch = writeBatch(db);
+  for (const { id, ...fields } of updates) {
+    if (!id) throw new Error('batchUpdate entries require id');
+    batch.update(doc(db, collectionName, id), fields);
+  }
+  await batch.commit();
+  return updates;
+}

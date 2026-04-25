@@ -9,6 +9,7 @@ import debtConfigReducer from './debtConfigSlice.js';
 import recurringBillsReducer from './recurringBillsSlice.js';
 import balanceSnapshotsReducer from './balanceSnapshotsSlice.js';
 import systemReducer from './systemSlice.js';
+import categoryRulesReducer from './categoryRulesSlice.js';
 
 export const store = configureStore({
   reducer: {
@@ -22,5 +23,6 @@ export const store = configureStore({
     recurringBills: recurringBillsReducer,
     balanceSnapshots: balanceSnapshotsReducer,
     system: systemReducer,
+    categoryRules: categoryRulesReducer,
   },
 });

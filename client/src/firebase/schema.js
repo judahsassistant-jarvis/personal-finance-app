@@ -28,6 +28,7 @@ export const COLLECTIONS = Object.freeze({
   NOTIFICATION_LOG: 'notification_log',
   MAIL: 'mail',
   SYSTEM: 'system',
+  CATEGORY_RULES: 'category_rules',
 });
 
 export const NOTIFICATION_TYPES = Object.freeze({
@@ -515,6 +516,24 @@ export function newTransactionDoc({
 }
 
 /** @returns {RecurringBillDoc} */
+/**
+ * User-defined category rule. When the parser sees a transaction whose
+ * normalised merchant matches this rule's `merchant` exactly (case-insensitive),
+ * it assigns the rule's `category` instead of the hardcoded autoCategorize
+ * fallback. Created via the Transactions page when the user recategorises a
+ * row and opts to "save as a rule for future imports."
+ *
+ * @returns {{user_id: string, merchant: string, category: string, created: any}}
+ */
+export function newCategoryRuleDoc({ user_id, merchant, category }) {
+  return {
+    user_id,
+    merchant: String(merchant ?? '').trim(),
+    category: String(category ?? '').trim(),
+    created: serverTimestamp(),
+  };
+}
+
 export function newRecurringBillDoc({
   user_id,
   merchant,

@@ -86,6 +86,7 @@ const USER_SCOPED = [
   'recurring_bills',
   'monthly_budgets',
   'debt_config',
+  'category_rules',
 ];
 
 describe('users/{uid}', () => {

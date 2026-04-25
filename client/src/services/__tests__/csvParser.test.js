@@ -120,6 +120,29 @@ describe('autoCategorize', () => {
     expect(autoCategorize('LINK ATM')).toBe('Cash');
     expect(autoCategorize('Cashpoint')).toBe('Cash');
   });
+  test('user rules take precedence over hardcoded mapping', () => {
+    // 'Tesco' would normally categorise to 'Shopping' via the hardcoded list.
+    // A user rule for 'Tesco' = 'Food' should win.
+    const userRules = [{ merchant: 'Tesco', category: 'Food' }];
+    expect(autoCategorize('Tesco', userRules)).toBe('Food');
+  });
+  test('user rule match is case-insensitive on the exact merchant name', () => {
+    const userRules = [{ merchant: 'Atm Withdrawal Notemachine', category: 'Cash' }];
+    expect(autoCategorize('ATM WITHDRAWAL NOTEMACHINE', userRules)).toBe('Cash');
+  });
+  test('falls through to hardcoded list when no user rule matches', () => {
+    const userRules = [{ merchant: 'Some Other Merchant', category: 'Food' }];
+    expect(autoCategorize('Tesco', userRules)).toBe('Shopping');
+  });
+  test('ignores malformed user rules without throwing', () => {
+    const userRules = [
+      { merchant: '', category: 'Food' },
+      { category: 'Food' },
+      null,
+      { merchant: 'Tesco' },
+    ];
+    expect(autoCategorize('Tesco', userRules)).toBe('Shopping');
+  });
 });
 
 describe('KNOWN_CATEGORIES', () => {

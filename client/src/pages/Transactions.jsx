@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Sparkles, Check, X as XIcon } from 'lucide-react';
-import { fetchTransactions, editTransaction } from '../store/transactionsSlice.js';
+import { fetchTransactions, editTransaction, bulkRecategorize } from '../store/transactionsSlice.js';
 import { fetchDebts } from '../store/debtsSlice.js';
 import { fetchAccounts } from '../store/accountsSlice.js';
 import { fetchRecurringBills, removeRecurringBill } from '../store/recurringBillsSlice.js';
+import { fetchCategoryRules, addCategoryRule } from '../store/categoryRulesSlice.js';
 import { suggestTagsForUntagged } from '../services/debtPaymentMatcher.js';
 import { findMatchingRecurringBill } from '../services/recurringBills.js';
 import { KNOWN_CATEGORIES } from '../services/csvParser.js';
@@ -35,6 +36,7 @@ export default function Transactions() {
     dispatch(fetchDebts());
     dispatch(fetchAccounts());
     dispatch(fetchRecurringBills());
+    dispatch(fetchCategoryRules());
   }, [dispatch]);
 
   const suggestions = useMemo(
@@ -65,7 +67,43 @@ export default function Transactions() {
 
   const handleRecategorize = async (tx, category) => {
     if (!category || category === tx.category) return;
+    // Always update the row that was clicked.
     await dispatch(editTransaction({ id: tx.id, category })).unwrap();
+
+    // Find sibling transactions (same merchant, NOT debt-tagged, NOT this same
+    // row, currently in a different category). If there are any, offer to
+    // re-categorise them all + save a persistent rule for future imports.
+    const merchantKey = (tx.merchant || '').toLowerCase().trim();
+    if (!merchantKey) return;
+
+    const siblings = transactions.filter(
+      (t) =>
+        t.id !== tx.id
+        && !t.debt_id
+        && (t.merchant || '').toLowerCase().trim() === merchantKey
+        && t.category !== category,
+    );
+
+    const wantsBulkAndRule = siblings.length > 0
+      ? window.confirm(
+          `Apply "${category}" to ${siblings.length} other "${tx.merchant}" transaction${siblings.length === 1 ? '' : 's'} `
+          + 'AND save as a rule so future imports auto-categorise this merchant?\n\n'
+          + 'Cancel = update only this row.',
+        )
+      : window.confirm(
+          `Save "${category}" as a rule for "${tx.merchant}" so future imports auto-categorise this merchant?\n\n`
+          + 'Cancel = update only this row.',
+        );
+
+    if (!wantsBulkAndRule) return;
+
+    if (siblings.length > 0) {
+      await dispatch(bulkRecategorize({
+        ids: siblings.map((s) => s.id),
+        category,
+      })).unwrap();
+    }
+    await dispatch(addCategoryRule({ merchant: tx.merchant, category })).unwrap();
   };
 
   const handleTag = async (tx, debtId) => {
