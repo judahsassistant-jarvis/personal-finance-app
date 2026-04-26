@@ -10,6 +10,7 @@ import {
   batchUpdate,
 } from '../firebase/helpers.js';
 import { parseCSV } from '../services/csvParser.js';
+import { pairIdFor } from '../services/transferPairing.js';
 
 const COLLECTION = COLLECTIONS.TRANSACTIONS;
 
@@ -61,6 +62,55 @@ export const parseCSVFile = createAsyncThunk('transactions/parseCSV', async ({ f
   return parseCSV(text, accountId, { userRules });
 });
 
+/**
+ * Confirm a cross-account transfer pair. Writes a shared `transfer_pair_id`
+ * to both rows and sets `category = 'Transfer'` on each side ONLY if the
+ * current category is 'Other' / 'Income' (the auto-set values for unmatched
+ * outflows / inflows). Manual user categorisations are preserved.
+ */
+export const confirmTransferPair = createAsyncThunk(
+  'transactions/confirmTransferPair',
+  async ({ outflowId, inflowId }, { getState }) => {
+    const items = getState().transactions.items;
+    const outflow = items.find((t) => t.id === outflowId);
+    const inflow = items.find((t) => t.id === inflowId);
+    if (!outflow || !inflow) throw new Error('Pair endpoints not loaded');
+    const pairId = pairIdFor(outflowId, inflowId);
+    const TRANSFER_OVERRIDE_CATEGORIES = new Set(['Other', 'Income']);
+    const updates = [
+      {
+        id: outflowId,
+        transfer_pair_id: pairId,
+        ...(TRANSFER_OVERRIDE_CATEGORIES.has(outflow.category) ? { category: 'Transfer' } : {}),
+      },
+      {
+        id: inflowId,
+        transfer_pair_id: pairId,
+        ...(TRANSFER_OVERRIDE_CATEGORIES.has(inflow.category) ? { category: 'Transfer' } : {}),
+      },
+    ];
+    await batchUpdate(COLLECTION, updates);
+    return { outflowId, inflowId, pairId, updates };
+  },
+);
+
+/**
+ * Dismiss a transfer-pair suggestion. Stamps `pair_dismissed_at` on both rows
+ * so the suggestion doesn't keep re-appearing on every Transactions render.
+ */
+export const dismissTransferPair = createAsyncThunk(
+  'transactions/dismissTransferPair',
+  async ({ outflowId, inflowId }) => {
+    const ts = Timestamp.now();
+    const updates = [
+      { id: outflowId, pair_dismissed_at: ts },
+      { id: inflowId, pair_dismissed_at: ts },
+    ];
+    await batchUpdate(COLLECTION, updates);
+    return { outflowId, inflowId, pair_dismissed_at: ts };
+  },
+);
+
 /** Commit the previewed import results to Firestore via a batched write. */
 export const confirmImport = createAsyncThunk('transactions/confirmImport', async (_, { getState }) => {
   const uid = getState().auth.user.uid;
@@ -108,6 +158,21 @@ const slice = createSlice({
       const idSet = new Set(ids);
       for (const t of s.items) {
         if (idSet.has(t.id)) t.category = category;
+      }
+    });
+    b.addCase(confirmTransferPair.fulfilled, (s, a) => {
+      const byId = new Map(a.payload.updates.map((u) => [u.id, u]));
+      for (const t of s.items) {
+        const u = byId.get(t.id);
+        if (u) Object.assign(t, u);
+      }
+    });
+    b.addCase(dismissTransferPair.fulfilled, (s, a) => {
+      const { outflowId, inflowId, pair_dismissed_at } = a.payload;
+      for (const t of s.items) {
+        if (t.id === outflowId || t.id === inflowId) {
+          t.pair_dismissed_at = pair_dismissed_at;
+        }
       }
     });
     b.addCase(parseCSVFile.pending, (s) => { s.importLoading = true; s.error = null; });

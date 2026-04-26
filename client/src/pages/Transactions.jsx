@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Sparkles, Check, X as XIcon, Search, Tag, Plus } from 'lucide-react';
-import { fetchTransactions, editTransaction, bulkRecategorize } from '../store/transactionsSlice.js';
+import { Sparkles, Check, X as XIcon, Search, Tag, Plus, ArrowLeftRight } from 'lucide-react';
+import {
+  fetchTransactions,
+  editTransaction,
+  bulkRecategorize,
+  confirmTransferPair,
+  dismissTransferPair,
+} from '../store/transactionsSlice.js';
 import { fetchDebts } from '../store/debtsSlice.js';
 import { fetchAccounts } from '../store/accountsSlice.js';
 import { fetchRecurringBills, removeRecurringBill } from '../store/recurringBillsSlice.js';
@@ -9,6 +15,7 @@ import { fetchCategoryRules, addCategoryRule } from '../store/categoryRulesSlice
 import { updateProfile } from '../store/authSlice.js';
 import { suggestTagsForUntagged } from '../services/debtPaymentMatcher.js';
 import { findMatchingRecurringBill } from '../services/recurringBills.js';
+import { findTransferPairs, indexPairsByTransaction } from '../services/transferPairing.js';
 import { KNOWN_CATEGORIES } from '../services/csvParser.js';
 import { formatGBP } from '../firebase/schema.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
@@ -61,6 +68,9 @@ export default function Transactions() {
     [transactions, debts],
   );
 
+  const transferPairs = useMemo(() => findTransferPairs(transactions), [transactions]);
+  const pairIndex = useMemo(() => indexPairsByTransaction(transferPairs), [transferPairs]);
+
   const debtById = useMemo(
     () => new Map(debts.map((d) => [d.id, d])),
     [debts],
@@ -71,19 +81,22 @@ export default function Transactions() {
   );
 
   const filtered = useMemo(() => {
-    let rows = filterRows(transactions, filter, suggestions);
+    let rows = filterRows(transactions, filter, suggestions, pairIndex);
     rows = applyFilterControls(rows, {
       searchText, dateFrom, dateTo, minAmount, maxAmount, accountFilter,
     });
     return rows.slice().sort(byDateDesc);
-  }, [transactions, filter, suggestions, searchText, dateFrom, dateTo, minAmount, maxAmount, accountFilter]);
+  }, [transactions, filter, suggestions, pairIndex, searchText, dateFrom, dateTo, minAmount, maxAmount, accountFilter]);
 
   const counts = useMemo(() => ({
     all: transactions.length,
     untagged: transactions.filter((t) => !t.debt_id && Number(t.amount_pennies) < 0).length,
-    suggestions: transactions.filter((t) => suggestions.has(t.id)).length,
+    // Suggestions count includes both debt-payment matches and transfer-pair
+    // candidates. Transfer pairs surface twice in pairIndex (once per side) —
+    // count them once via the deduped pair list.
+    suggestions: transactions.filter((t) => suggestions.has(t.id)).length + transferPairs.length,
     'debt-payments': transactions.filter((t) => t.debt_id).length,
-  }), [transactions, suggestions]);
+  }), [transactions, suggestions, transferPairs]);
 
   const handleRecategorize = async (tx, category) => {
     if (!category || category === tx.category) return;
@@ -142,6 +155,20 @@ export default function Transactions() {
     if (!window.confirm(`Remove custom category "${name}"? Transactions tagged with it will fall back to "Other".`)) return;
     const next = customCategories.filter((c) => c !== name);
     await dispatch(updateProfile({ custom_categories: next })).unwrap();
+  };
+
+  const handleConfirmPair = async (pair) => {
+    await dispatch(confirmTransferPair({
+      outflowId: pair.outflowId,
+      inflowId: pair.inflowId,
+    })).unwrap();
+  };
+
+  const handleDismissPair = async (pair) => {
+    await dispatch(dismissTransferPair({
+      outflowId: pair.outflowId,
+      inflowId: pair.inflowId,
+    })).unwrap();
   };
 
   const handleTag = async (tx, debtId) => {
@@ -272,12 +299,15 @@ export default function Transactions() {
                       key={t.id}
                       tx={t}
                       suggestion={suggestions.get(t.id)}
+                      pairInfo={pairIndex.get(t.id)}
                       debtById={debtById}
                       accountById={accountById}
                       debts={debts}
                       categories={allCategories}
                       onTag={handleTag}
                       onRecategorize={handleRecategorize}
+                      onConfirmPair={handleConfirmPair}
+                      onDismissPair={handleDismissPair}
                     />
                   ))}
                 </tbody>
@@ -290,13 +320,18 @@ export default function Transactions() {
   );
 }
 
-function TransactionRow({ tx, suggestion, debtById, accountById, debts, categories, onTag, onRecategorize }) {
+function TransactionRow({
+  tx, suggestion, pairInfo, debtById, accountById, debts, categories,
+  onTag, onRecategorize, onConfirmPair, onDismissPair,
+}) {
   const amount = Number(tx.amount_pennies || 0);
   const isInflow = amount > 0;
   const tagged = tx.debt_id;
   const taggedDebt = tagged ? debtById.get(tx.debt_id) : null;
   const suggestedDebt = suggestion ? debtById.get(suggestion) : null;
   const account = tx.account_id ? accountById.get(tx.account_id) : null;
+  const isPaired = !!tx.transfer_pair_id;
+  const otherAccount = pairInfo ? accountById.get(pairInfo.otherAccountId) : null;
 
   return (
     <tr className="border-t border-border hover:bg-muted/30">
@@ -310,6 +345,8 @@ function TransactionRow({ tx, suggestion, debtById, accountById, debts, categori
       <td className="py-2 px-3 text-xs">
         {tagged ? (
           <Badge variant="accent">Debt Payment</Badge>
+        ) : isPaired ? (
+          <Badge variant="accent">Transfer</Badge>
         ) : (
           <CategoryPicker
             value={tx.category || 'Other'}
@@ -335,6 +372,11 @@ function TransactionRow({ tx, suggestion, debtById, accountById, debts, categori
               <XIcon className="w-3 h-3" />
             </Button>
           </div>
+        ) : isPaired ? (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <ArrowLeftRight className="w-3 h-3" />
+            Paired
+          </span>
         ) : suggestedDebt ? (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -355,6 +397,32 @@ function TransactionRow({ tx, suggestion, debtById, accountById, debts, categori
               onChange={(id) => onTag(tx, id)}
               placeholder="Other…"
             />
+          </div>
+        ) : pairInfo ? (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <ArrowLeftRight className="w-3 h-3 text-accent-foreground" />
+              {pairInfo.role === 'outflow' ? 'Transfer to ' : 'Transfer from '}
+              <span className="font-medium text-foreground">
+                {otherAccount?.name ?? 'another account'}
+              </span>?
+            </span>
+            <Button
+              variant="outline" size="sm"
+              onClick={() => onConfirmPair(pairInfo.pair)}
+              title="Confirm transfer pair"
+              className="h-6 px-2 text-xs"
+            >
+              <Check className="w-3 h-3" />Pair
+            </Button>
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => onDismissPair(pairInfo.pair)}
+              title="Dismiss — not a transfer"
+              className="h-6 px-2 text-xs"
+            >
+              <XIcon className="w-3 h-3" />
+            </Button>
           </div>
         ) : !isInflow ? (
           <DebtPicker
@@ -576,12 +644,12 @@ function CategoryPicker({ value, onChange, categories }) {
   );
 }
 
-function filterRows(transactions, filter, suggestions) {
+function filterRows(transactions, filter, suggestions, pairIndex) {
   switch (filter) {
     case 'untagged':
       return transactions.filter((t) => !t.debt_id && Number(t.amount_pennies) < 0);
     case 'suggestions':
-      return transactions.filter((t) => suggestions.has(t.id));
+      return transactions.filter((t) => suggestions.has(t.id) || pairIndex.has(t.id));
     case 'debt-payments':
       return transactions.filter((t) => t.debt_id);
     default:
