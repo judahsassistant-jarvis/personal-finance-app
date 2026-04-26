@@ -15,7 +15,15 @@
  */
 
 const DEFAULT_LOOKBACK_MONTHS = 3;
-const AMOUNT_TOLERANCE = 0.05; // ±5%
+// Two-tier amount tolerance. The tight tier covers fixed subscriptions (Netflix
+// £13.99 every month). The loose tier covers variable bills like energy that
+// genuinely swing month-to-month (£140 winter / £80 summer is ±27% — a
+// meaningful pattern that ±5% would miss). We require more occurrences at the
+// loose tier to compensate for the wider cluster window.
+const AMOUNT_TOLERANCE_TIGHT = 0.05; // ±5%
+const AMOUNT_TOLERANCE_LOOSE = 0.25; // ±25%
+const MIN_OCCURRENCES_TIGHT = 2;
+const MIN_OCCURRENCES_LOOSE = 3;
 const NON_BILL_CATEGORIES = new Set(['Transfer', 'Investment', 'Payments', 'Debt Payment']);
 
 /**
@@ -61,29 +69,16 @@ export function inferRecurringBills({
 
   const results = [];
   for (const [, txs] of byMerchant.entries()) {
-    if (txs.length < 2) continue;
+    if (txs.length < MIN_OCCURRENCES_TIGHT) continue;
 
-    // Collapse amount variance: group by rounded amount, pick the most common group.
-    const amountGroups = new Map();
-    for (const t of txs) {
-      const amt = Math.abs(Number(t.amount_pennies || 0));
-      // Bucket by ±5% tolerance — canonical amount is the group's first tx amount.
-      let bucketKey = null;
-      for (const key of amountGroups.keys()) {
-        if (Math.abs(key - amt) <= Math.max(key, amt) * AMOUNT_TOLERANCE) {
-          bucketKey = key;
-          break;
-        }
-      }
-      if (bucketKey == null) bucketKey = amt;
-      if (!amountGroups.has(bucketKey)) amountGroups.set(bucketKey, []);
-      amountGroups.get(bucketKey).push(t);
-    }
-
-    // Must have a dominant amount group with 2+ occurrences.
-    const dominant = [...amountGroups.entries()].sort((a, b) => b[1].length - a[1].length)[0];
-    if (!dominant || dominant[1].length < 2) continue;
-    const [expectedAmount, dominantTxs] = dominant;
+    // Try tight cluster first (covers fixed subscriptions). Fall back to
+    // loose cluster (covers variable bills like energy). Loose requires more
+    // occurrences to compensate for the wider window.
+    const dominant =
+      findAmountCluster(txs, AMOUNT_TOLERANCE_TIGHT, MIN_OCCURRENCES_TIGHT) ??
+      findAmountCluster(txs, AMOUNT_TOLERANCE_LOOSE, MIN_OCCURRENCES_LOOSE);
+    if (!dominant) continue;
+    const { expectedAmount, dominantTxs } = dominant;
 
     // Modal day-of-month.
     const dayCounts = new Map();
@@ -119,6 +114,38 @@ export function inferRecurringBills({
   }
 
   return results.sort((a, b) => a.expected_day_of_month - b.expected_day_of_month);
+}
+
+/**
+ * Find the largest cluster of transactions whose amounts agree within
+ * `tolerance` of a candidate centre. Centre-pivot search rather than first-seen
+ * bucketing — order-independent and avoids biasing the expected amount toward
+ * whichever transaction happened to come first. Returns the cluster + its
+ * median (the published `expected_amount_pennies`), or null if no cluster
+ * meets `minCount`.
+ */
+function findAmountCluster(txs, tolerance, minCount) {
+  if (!Array.isArray(txs) || txs.length < minCount) return null;
+  const amounts = txs.map((t) => Math.abs(Number(t.amount_pennies || 0)));
+  let best = null;
+  for (let i = 0; i < amounts.length; i++) {
+    const centre = amounts[i];
+    if (centre === 0) continue;
+    // Tolerance is applied against the LARGER of the two values being compared.
+    // Symmetric — pairing a £110 candidate with a £140 centre gives the same
+    // result as the reverse — and slightly more permissive than centre-only,
+    // which is the right behaviour for variable bills with high-side outliers.
+    const cluster = txs.filter((_, j) => Math.abs(amounts[j] - centre) <= Math.max(centre, amounts[j]) * tolerance);
+    if (!best || cluster.length > best.cluster.length) {
+      best = { cluster, centre };
+    }
+  }
+  if (!best || best.cluster.length < minCount) return null;
+  const sorted = best.cluster
+    .map((t) => Math.abs(Number(t.amount_pennies || 0)))
+    .sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  return { dominantTxs: best.cluster, expectedAmount: median };
 }
 
 /**
@@ -170,7 +197,12 @@ export function billStatusInCycle({ bill, transactions, cycleStart, cycleEnd, no
     if (!d || d < cycleStart || d >= cycleEnd) return false;
     const amt = Math.abs(Number(t.amount_pennies || 0));
     const expected = Math.abs(Number(bill.expected_amount_pennies || 0));
-    const tol = Math.max(amt, expected) * AMOUNT_TOLERANCE;
+    // Use loose tolerance here so a variable bill inferred at the loose tier
+    // (e.g. £110 median energy with monthly swing) still matches its real
+    // transactions (£140 winter, £80 summer) when checking "has this been
+    // paid this cycle?" Tight tolerance here would reject the legitimate
+    // match and surface false "missed" warnings.
+    const tol = Math.max(amt, expected) * AMOUNT_TOLERANCE_LOOSE;
     return Math.abs(amt - expected) <= tol;
   });
   if (match) return 'paid';

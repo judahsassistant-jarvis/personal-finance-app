@@ -43,6 +43,45 @@ describe('inferRecurringBills', () => {
     expect(out).toHaveLength(1);
   });
 
+  test('loose tier (±25%) catches variable bills with 3+ occurrences', () => {
+    // Energy bill: £140 winter / £80 summer / £110 spring. Spread is ±27%
+    // from £110 mean — too wide for the tight tier but the loose tier
+    // (±25%, 3+ occurrences) should catch it. Median £110.
+    const transactions = [
+      tx('2026-01-01', 'EDF Energy', -140),
+      tx('2026-02-01', 'EDF Energy', -110),
+      tx('2026-03-01', 'EDF Energy', -88),
+    ];
+    const out = inferRecurringBills({ transactions, asOf: new Date(2026, 3, 15), lookbackMonths: 6 });
+    expect(out).toHaveLength(1);
+    expect(out[0].merchant).toBe('EDF Energy');
+    expect(out[0].expected_amount_pennies).toBe(11000); // median
+    expect(out[0].occurrences).toBe(3);
+  });
+
+  test('loose tier rejects 2-occurrence variable patterns', () => {
+    // Two-occurrence variable bill with > 5% spread: tight tier requires 5%
+    // and finds nothing; loose tier requires 3+ and also rejects.
+    const transactions = [
+      tx('2026-02-01', 'EDF Energy', -140),
+      tx('2026-03-01', 'EDF Energy', -88),
+    ];
+    expect(inferRecurringBills({ transactions, asOf: new Date(2026, 3, 15), lookbackMonths: 6 })).toEqual([]);
+  });
+
+  test('uses median (not first-seen) as the expected amount', () => {
+    // Three same-merchant rows, tight cluster around £100. The first-seen
+    // happens to be the outlier £95 but the median £100 should win.
+    const transactions = [
+      tx('2026-01-01', 'Spotify', -95),
+      tx('2026-02-01', 'Spotify', -100),
+      tx('2026-03-01', 'Spotify', -100),
+    ];
+    const out = inferRecurringBills({ transactions, asOf: new Date(2026, 3, 15), lookbackMonths: 6 });
+    expect(out).toHaveLength(1);
+    expect(out[0].expected_amount_pennies).toBe(10000);
+  });
+
   test('ignores inflows (positive amounts)', () => {
     const transactions = [
       tx('2026-02-01', 'Employer', 3800),
