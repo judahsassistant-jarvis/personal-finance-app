@@ -10,6 +10,7 @@ import recurringBillsReducer from './recurringBillsSlice.js';
 import balanceSnapshotsReducer from './balanceSnapshotsSlice.js';
 import systemReducer from './systemSlice.js';
 import categoryRulesReducer from './categoryRulesSlice.js';
+import importBatchesReducer from './importBatchesSlice.js';
 
 export const store = configureStore({
   reducer: {
@@ -24,5 +25,6 @@ export const store = configureStore({
     balanceSnapshots: balanceSnapshotsReducer,
     system: systemReducer,
     categoryRules: categoryRulesReducer,
+    importBatches: importBatchesReducer,
   },
 });

@@ -137,6 +137,23 @@ export async function batchCreate(collectionName, userId, dataArray) {
 }
 
 /**
+ * Delete many docs by id, chunked to Firestore's 500-op batch limit.
+ *
+ * Used by import-batch cascade-delete: when the user removes an import
+ * batch, every transaction tagged with that batch_id is deleted in the
+ * same operation as the batch doc itself.
+ */
+export async function batchDelete(collectionName, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 500)) batch.delete(doc(db, collectionName, id));
+    await batch.commit();
+  }
+  return ids;
+}
+
+/**
  * Update many docs in a single Firestore commit.
  *
  * @param {string} collectionName

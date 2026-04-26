@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { Upload, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Upload, AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
 import { fetchAccounts } from '../store/accountsSlice.js';
 import { fetchTransactions, parseCSVFile, confirmImport, clearImport } from '../store/transactionsSlice.js';
+import { fetchImportBatches, removeImportBatch } from '../store/importBatchesSlice.js';
 import { detectBankMismatch } from '../services/bankNameGuard.js';
 import { formatGBP, LIQUIDITY } from '../firebase/schema.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
@@ -40,6 +41,8 @@ export default function Import() {
     // trip at preview time. Transactions are loaded lazily today so this is
     // the first place they're needed pre-Import.
     dispatch(fetchTransactions());
+    // Past-imports list (audit Gap 4) — drives the lower section of the page.
+    dispatch(fetchImportBatches());
   }, [dispatch]);
 
   // Default account selection to the first liquid account once accounts load.
@@ -137,7 +140,28 @@ function UploadView({
   file, setFile, accountId, setAccountId, liquidAccounts,
   accountsLoading, importLoading, importError, onParse,
 }) {
+  const dispatch = useDispatch();
+  const accounts = useSelector((s) => s.accounts.items);
+  const batches = useSelector((s) => s.importBatches.items);
+  const batchesLoading = useSelector((s) => s.importBatches.loading);
+  const accountById = useMemo(
+    () => new Map(accounts.map((a) => [a.id, a])),
+    [accounts],
+  );
   const canSubmit = !!file && !!accountId && !importLoading;
+
+  async function handleDeleteBatch(batch) {
+    const account = accountById.get(batch.account_id);
+    const periodLabel = batch.period_start && batch.period_end
+      ? ` (${batch.period_start} → ${batch.period_end})`
+      : '';
+    const confirmed = window.confirm(
+      `Delete ${batch.count} transaction${batch.count === 1 ? '' : 's'} imported into ${account?.name ?? 'unknown account'}${periodLabel}?\n\n` +
+      `This cannot be undone. Tagged debt payments and transfer pairs in this batch will be cleared.`,
+    );
+    if (!confirmed) return;
+    await dispatch(removeImportBatch(batch.id)).unwrap();
+  }
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -214,8 +238,101 @@ function UploadView({
           </form>
         </CardContent>
       </Card>
+
+      <PastImportsSection
+        batches={batches}
+        loading={batchesLoading}
+        accountById={accountById}
+        onDelete={handleDeleteBatch}
+      />
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Past imports (audit Gap 4: provenance + undo)
+// ---------------------------------------------------------------------------
+
+function PastImportsSection({ batches, loading, accountById, onDelete }) {
+  if (loading && batches.length === 0) {
+    return <p className="text-sm text-muted-foreground">Loading past imports…</p>;
+  }
+  if (batches.length === 0) {
+    return null; // empty state — first-time imports skip this section entirely
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Past imports</CardTitle>
+        <CardDescription>
+          Every batch you've imported. Delete a batch to remove all the transactions
+          it created — useful if you imported into the wrong account or want to redo
+          a statement after fixing a parsing issue.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <ul className="divide-y divide-border">
+          {batches.map((b) => (
+            <PastImportRow
+              key={b.id}
+              batch={b}
+              account={accountById.get(b.account_id)}
+              onDelete={() => onDelete(b)}
+            />
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PastImportRow({ batch, account, onDelete }) {
+  const importedAt = batch.imported_at ? formatBatchTimestamp(batch.imported_at) : '—';
+  const period = batch.period_start && batch.period_end
+    ? `${batch.period_start} → ${batch.period_end}`
+    : null;
+  return (
+    <li className="px-4 py-3 flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm">{account?.name ?? '(deleted account)'}</span>
+          <Badge variant="secondary" className="text-[10px]">
+            {batch.count} txn{batch.count === 1 ? '' : 's'}
+          </Badge>
+          {batch.balance_check?.startsWith('OK') && (
+            <Badge variant="default" className="text-[10px]">balance OK</Badge>
+          )}
+          {batch.balance_check?.startsWith('MISMATCH') && (
+            <Badge variant="destructive" className="text-[10px]">balance mismatch</Badge>
+          )}
+          {batch.historical && (
+            <Badge variant="outline" className="text-[10px]">historical</Badge>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5 space-x-2">
+          <span>{importedAt}</span>
+          {period && <span>· {period}</span>}
+          <span>· {batch.format}</span>
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onDelete}
+        title="Delete this batch + all its transactions"
+        className="text-destructive hover:text-destructive"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </Button>
+    </li>
+  );
+}
+
+function formatBatchTimestamp(ts) {
+  const d = ts instanceof Date ? ts : new Date(typeof ts === 'number' ? ts : (ts?.seconds ?? 0) * 1000);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ export const COLLECTIONS = Object.freeze({
   MAIL: 'mail',
   SYSTEM: 'system',
   CATEGORY_RULES: 'category_rules',
+  IMPORT_BATCHES: 'import_batches',
 });
 
 export const NOTIFICATION_TYPES = Object.freeze({
@@ -637,6 +638,60 @@ export function newBalanceSnapshotDoc({
     created: serverTimestamp(),
   };
   if (notes != null && String(notes).length > 0) doc.notes = notes;
+  return doc;
+}
+
+/**
+ * @typedef {Object} ImportBatchDoc
+ * @property {string} user_id
+ * @property {string} account_id - the account the batch was imported into
+ * @property {import('firebase/firestore').FieldValue} imported_at - server timestamp at confirm time
+ * @property {number} count - number of rows actually written (after dedup skip)
+ * @property {number} skipped - number of rows skipped as duplicates
+ * @property {number} total_debit_pennies
+ * @property {number} total_credit_pennies
+ * @property {string} format - csvParser format detection result
+ * @property {string} [bank] - from `#bank` metadata
+ * @property {string} [account] - from `#account` metadata (statement account name, separate from our account_id)
+ * @property {string} [period_start] - from `#period_start` metadata, ISO date
+ * @property {string} [period_end] - from `#period_end` metadata, ISO date
+ * @property {string} [balance_check] - from `#balance_check` metadata
+ * @property {string} [source_email_subject] - from `#source_email_subject` metadata
+ * @property {string} [source_email_date] - from `#source_email_date` metadata
+ * @property {boolean} [historical] - true if back-filled from existing transactions (pre-Gap-4 imports). Distinguishes records reconstructed from in-flight data from those captured at import time.
+ */
+
+/**
+ * @returns {ImportBatchDoc}
+ */
+export function newImportBatchDoc({
+  user_id,
+  account_id,
+  count,
+  skipped = 0,
+  total_debit_pennies = 0,
+  total_credit_pennies = 0,
+  format,
+  metadata = {},
+  historical = false,
+  imported_at,
+}) {
+  const doc = {
+    user_id,
+    account_id,
+    count: Number(count) || 0,
+    skipped: Number(skipped) || 0,
+    total_debit_pennies: Number(total_debit_pennies) || 0,
+    total_credit_pennies: Number(total_credit_pennies) || 0,
+    format: format || 'unknown',
+    imported_at: imported_at ?? serverTimestamp(),
+  };
+  // Pull recognised metadata fields onto the doc as top-level columns so the
+  // listing page can show them without parsing a nested map.
+  for (const k of ['bank', 'account', 'period_start', 'period_end', 'balance_check', 'source_email_subject', 'source_email_date']) {
+    if (metadata[k]) doc[k] = String(metadata[k]);
+  }
+  if (historical) doc.historical = true;
   return doc;
 }
 

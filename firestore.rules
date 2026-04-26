@@ -74,6 +74,12 @@ service cloud.firestore {
       allow update: if stillOwnedByMe();
     }
 
+    match /import_batches/{id} {
+      allow read, delete: if isMine();
+      allow create: if ownedByMe();
+      allow update: if stillOwnedByMe();
+    }
+
     match /balance_snapshots/{id} {
       allow read, delete: if isMine();
       allow create: if ownedByMe();

@@ -87,6 +87,7 @@ const USER_SCOPED = [
   'monthly_budgets',
   'debt_config',
   'category_rules',
+  'import_batches',
 ];
 
 describe('users/{uid}', () => {

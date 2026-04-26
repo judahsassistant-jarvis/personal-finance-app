@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { Timestamp } from 'firebase/firestore';
-import { COLLECTIONS, newTransactionDoc } from '../firebase/schema.js';
+import { COLLECTIONS, newTransactionDoc, newImportBatchDoc } from '../firebase/schema.js';
 import {
   fetchWhere,
   fetchByFieldIn,
@@ -12,6 +12,7 @@ import {
 } from '../firebase/helpers.js';
 import { parseCSV } from '../services/csvParser.js';
 import { pairIdFor } from '../services/transferPairing.js';
+import { transactionsRemovedByBatch } from './transactionActions.js';
 
 const COLLECTION = COLLECTIONS.TRANSACTIONS;
 
@@ -139,7 +140,30 @@ export const confirmImport = createAsyncThunk('transactions/confirmImport', asyn
     date: typeof t.date === 'string' ? Timestamp.fromDate(new Date(t.date)) : t.date,
   }));
   const written = toWrite.length > 0 ? await batchCreate(COLLECTION, uid, toWrite) : [];
-  return { written, skipped: candidates.length - fresh.length };
+  const skipped = candidates.length - fresh.length;
+  // Audit Gap 4 — record the import as a batch doc for provenance + undo.
+  // Skip the record when nothing was actually written (a no-op re-import); a
+  // 0-count batch doc would just clutter the listing.
+  if (written.length > 0) {
+    const accountId = written[0]?.account_id ?? candidates[0]?.account_id;
+    const totalDebit = written
+      .filter((t) => Number(t.amount_pennies || 0) < 0)
+      .reduce((s, t) => s + Math.abs(Number(t.amount_pennies)), 0);
+    const totalCredit = written
+      .filter((t) => Number(t.amount_pennies || 0) > 0)
+      .reduce((s, t) => s + Number(t.amount_pennies), 0);
+    await createDoc(COLLECTIONS.IMPORT_BATCHES, uid, newImportBatchDoc({
+      user_id: uid,
+      account_id: accountId,
+      count: written.length,
+      skipped,
+      total_debit_pennies: totalDebit,
+      total_credit_pennies: totalCredit,
+      format: preview.format,
+      metadata: preview.metadata ?? {},
+    }));
+  }
+  return { written, skipped };
 });
 
 const slice = createSlice({
@@ -200,6 +224,11 @@ const slice = createSlice({
     b.addCase(confirmImport.fulfilled, (s, a) => {
       s.items = [...a.payload.written, ...s.items];
       s.importResult = null;
+    });
+    b.addCase(transactionsRemovedByBatch, (s, a) => {
+      const removedIds = new Set(a.payload.transactionIds);
+      if (removedIds.size === 0) return;
+      s.items = s.items.filter((t) => !removedIds.has(t.id));
     });
   },
 });
