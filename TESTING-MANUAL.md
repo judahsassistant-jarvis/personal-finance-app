@@ -263,15 +263,30 @@ Requires: 3+ months of energy / mobile / utility data with month-to-month amount
 
 ---
 
-## 9. Known gaps — not yet testable
+## 9. Budgets
 
-- **Budgets page stubbed.** Empty. Not a dogfood blocker for 2a.
+Requires: at least 1 month of categorised transactions (suggestions need 1–3 months
+to become useful).
+
+- [ ] `/budgets` loads with the page header + month selector defaulting to the current month.
+- [ ] Click chevrons → step backward / forward by month. The "Today" pill appears when off the current month and snaps you back.
+- [ ] Summary strip: Spent this month / Budgeted (with category count) / Remaining (or "Over by" with destructive tone if spend > total budget).
+- [ ] Per-category rows show category name, spent amount, progress bar (green / amber ≥80% / red over-budget), spent-of-budget summary line.
+- [ ] Categories with no budget set show "No budget set" placeholder.
+- [ ] Type a value into the row's budget input → Save (✓) button enables → click → row updates with the new budget + progress bar.
+- [ ] Trash icon clears the budget and reverts to "No budget set".
+- [ ] Suggestion line below the row appears when the engine has a 3-month average to suggest. "Use" button accepts the suggestion. Confidence badge (high / medium / low) reflects consistency over the lookback window.
+- [ ] Balance-shifting categories (Transfer / Investment / Payments / Debt Payment / Income) are NEVER shown — they're tracked elsewhere.
+- [ ] Empty state ("Nothing to budget yet") shows on a fresh account before any transactions exist.
+
+## 10. Known gaps — not yet testable
+
 - **Production email delivery (Section 6 subsection)** deferred indefinitely — Judah decided 2026-04-24 it should not block further development. Functions queue `/mail` docs in both emulator and prod; bolt the firestore-send-email extension on when prod is set up.
 - **Credit-card statement import** out of scope for 2a (`PHASE-2-PLAN.md §2.9`). Manual balance entry via the per-debt "Record statement balance" form. Card-side import deferred to 2b on its own merits.
 
 ---
 
-## 10. 2a exit gate
+## 11. 2a exit gate
 
 Ship from this branch to a private prod Firebase project (not publicly advertised):
 
