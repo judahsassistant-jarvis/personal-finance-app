@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { suggestDebtForTransaction, suggestTagsForUntagged } from '../debtPaymentMatcher.js';
+import {
+  suggestDebtForTransaction,
+  suggestTagsForUntagged,
+  computeMerchantWordFrequencies,
+} from '../debtPaymentMatcher.js';
 
 const debts = [
   { id: 'barclay', name: 'Barclaycard Platinum' },
@@ -129,6 +133,116 @@ describe('suggestDebtForTransaction', () => {
       expect(suggestDebtForTransaction(
         { merchant: 'HALIFAX CREDIT CARD', amount_pennies: -5000 }, debtsWithPaypal
       ).debtId).toBe('halifax');
+    });
+  });
+
+  describe('frequency-aware match floor (bare-PayPal false-positive fix)', () => {
+    const debtsWithPaypal = [
+      ...debts,
+      { id: 'paypal-credit', name: 'PayPal Credit' },
+    ];
+
+    // Simulate Judah's actual data: 'paypal' appears across many distinct
+    // merchant strings (PayPal, PayPal Credit, PayPal: Steam, PayPal: Dropbox,
+    // PayPal: YouTube, PayPal: Microsoft, PayPal: Shopify) → weak signal.
+    // 'barclaycard' / 'zopa' / 'klarna' each appear in 1-2 distinct merchants
+    // → strong.
+    const populated = [
+      { merchant: 'PayPal', amount_pennies: -140 },
+      { merchant: 'PayPal Credit', amount_pennies: -8000 },
+      { merchant: 'PayPal: Steam', amount_pennies: -1623 },
+      { merchant: 'PayPal: Dropbox', amount_pennies: -999 },
+      { merchant: 'PayPal: YouTube', amount_pennies: -1299 },
+      { merchant: 'PayPal: Microsoft', amount_pennies: -1049 },
+      { merchant: 'PayPal: Shopify', amount_pennies: -500 },
+      { merchant: 'Barclaycard', amount_pennies: -8000 },
+      { merchant: 'Zopa', amount_pennies: -650 },
+      { merchant: 'Klarna Sofa', amount_pennies: -9000 },
+    ];
+    const wordFrequencies = computeMerchantWordFrequencies(populated);
+
+    it('bare "PayPal" merchant does NOT suggest PayPal Credit when paypal is weak', () => {
+      // Single weak word overlap (just 'paypal') is suppressed.
+      expect(suggestDebtForTransaction(
+        { merchant: 'PayPal', amount_pennies: -140 },
+        debtsWithPaypal,
+        { wordFrequencies },
+      )).toBeNull();
+    });
+
+    it('bare "PayPal Credit" merchant DOES still suggest PayPal Credit', () => {
+      // Two weak overlaps (paypal + credit) cross the 2-weak-words threshold.
+      // The matcher returns this match.
+      expect(suggestDebtForTransaction(
+        { merchant: 'PayPal Credit', amount_pennies: -8000 },
+        debtsWithPaypal,
+        { wordFrequencies },
+      ).debtId).toBe('paypal-credit');
+    });
+
+    it('"BARCLAYCARD" still matches even though paypal is weak (barclaycard is strong)', () => {
+      // Frequency-aware floor doesn't penalise unique brand words.
+      expect(suggestDebtForTransaction(
+        { merchant: 'BARCLAYCARD BP', amount_pennies: -10000 },
+        debtsWithPaypal,
+        { wordFrequencies },
+      ).debtId).toBe('barclay');
+    });
+
+    it('"ZOPA LTD" still matches (zopa appears in only 1 distinct merchant)', () => {
+      expect(suggestDebtForTransaction(
+        { merchant: 'ZOPA LTD DD', amount_pennies: -650 },
+        debtsWithPaypal,
+        { wordFrequencies },
+      ).debtId).toBe('zopa');
+    });
+
+    it('"KLARNA SOFA" still matches (klarna in 1 merchant + sofa overlaps)', () => {
+      expect(suggestDebtForTransaction(
+        { merchant: 'KLARNA*SOFA', amount_pennies: -9000 },
+        debtsWithPaypal,
+        { wordFrequencies },
+      ).debtId).toBe('klarna');
+    });
+
+    it('legacy callers without wordFrequencies see unchanged behaviour', () => {
+      // Without frequencies, all matches are treated as strong → bare PayPal
+      // still matches PayPal Credit (the very thing we're fixing). That's OK
+      // because the bulk caller (suggestTagsForUntagged) always computes them;
+      // direct callers without context get the legacy behaviour.
+      expect(suggestDebtForTransaction(
+        { merchant: 'PayPal', amount_pennies: -140 }, debtsWithPaypal
+      ).debtId).toBe('paypal-credit');
+    });
+  });
+
+  describe('computeMerchantWordFrequencies', () => {
+    it('counts distinct merchant strings per word (not transaction count)', () => {
+      // Three 'BARCLAYCARD BP' rows on three different dates count as ONE
+      // distinct merchant — the frequency map measures variety, not volume.
+      const txs = [
+        { merchant: 'BARCLAYCARD BP', amount_pennies: -100 },
+        { merchant: 'BARCLAYCARD BP', amount_pennies: -100 },
+        { merchant: 'BARCLAYCARD BP', amount_pennies: -100 },
+        { merchant: 'PayPal: Steam', amount_pennies: -1623 },
+        { merchant: 'PayPal: Dropbox', amount_pennies: -999 },
+      ];
+      const freq = computeMerchantWordFrequencies(txs);
+      expect(freq.get('barclaycard')).toBe(1);
+      expect(freq.get('paypal')).toBe(2);
+      expect(freq.get('steam')).toBe(1);
+    });
+
+    it('skips words shorter than MIN_WORD_LEN', () => {
+      const freq = computeMerchantWordFrequencies([
+        { merchant: 'BP CC', amount_pennies: -100 },
+      ]);
+      expect(freq.size).toBe(0);
+    });
+
+    it('handles empty / null input', () => {
+      expect(computeMerchantWordFrequencies([]).size).toBe(0);
+      expect(computeMerchantWordFrequencies(null).size).toBe(0);
     });
   });
 });
