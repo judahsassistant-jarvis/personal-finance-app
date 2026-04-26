@@ -13,6 +13,12 @@ cd functions/tests && npm run test:integration   # Cloud Functions against the e
 
 All four must be green before running through this checklist.
 
+> **Integration test precondition:** `test:integration` filters by the seeded TEST_UID
+> only when cleaning up, but the function scanners query all users. Leftover dogfood
+> data from another user inflates the candidate count and fails tests. Run
+> `npm run clear` (from `scripts/`) before `test:integration` if you've been
+> dogfooding in the same emulator session.
+
 ---
 
 ## Setup
@@ -103,7 +109,7 @@ Requires: seeded dataset (5 accounts covering current / savings / cash ISA / S&S
 ### Emulator dry-run
 
 - [ ] Seed data + ensure a promo bucket exists with `promo_end` within 14 days: edit a seeded bucket in the emulator UI, or use `npm run seed` which creates one.
-- [ ] Hit `http://127.0.0.1:5001/<project>/europe-west2/runBtCliffAlertsNow` (or whatever the emulator prints for the function URL).
+- [ ] Hit `http://127.0.0.1:5001/personal-finance-app-dev-3ffb2/europe-west2/runBtCliffAlertsNow` (or whatever the emulator prints for the function URL).
 - [ ] Check `/mail` collection in the emulator UI — one doc with the expected subject + HTML body.
 - [ ] Check `/notification_log` — one `bt_<uid>_<bucket>_critical_14d_<date>` entry.
 - [ ] Hit the endpoint again → no new `/mail` docs (idempotency).
@@ -125,17 +131,121 @@ The Cloud Functions write to `/mail`. Actual email delivery requires the **Fireb
 
 ---
 
-## 7. Known gaps — not yet testable
+## 7. CSV Import (Sprint 11 + audit Gaps 1, 4, 5)
 
-- **CSV import (`/import` page).** Stubbed as Coming Soon. Phase 1's csvParser logic ported in Sprint 3 but the import UI was never rebuilt for Firebase. **Now scheduled as Sprint 11 (dogfood-readiness bridge) — see PHASE-2-PLAN.md.** Includes a full audit + rework of the ported parser before wiring the UI. Real-data dogfood depends on this.
-- **Budgets page stubbed.** Empty. Not a dogfood blocker for 2a.
-- **Real-data UAT.** Depends on Sprint 11 landing. Then run through this checklist with real accounts / debts / bank CSVs and verify the forecast + discretionary + reminder numbers against reality.
-- **Post-dogfood sprint:** gather any bugs / UX friction from the Sprint 11 dogfood run into a cleanup pass before making 2b go/no-go decision.
-- **Production email delivery (Section 6 subsection)** deferred indefinitely — Judah decided 2026-04-24 it should not block further development. Functions queue `/mail` docs in both emulator and prod; bolt the firestore-send-email extension on when prod is set up.
+Requires: at least one liquid account on `/accounts`. Source CSVs live in
+`OneDrive/My Drive (judahsassistant@gmail.com)/PFA-statements/` (output of the
+Claude statement processor scheduled task), or any bank-format CSV exported
+manually from Nationwide / Revolut / Virgin Money.
+
+### 7.1 Upload + preview
+
+- [ ] `/import` loads. UploadView shows a CSV file picker and a "Import into account" dropdown filtered to liquid accounts only (no SIPP / pension).
+- [ ] Pick a fresh statement and an account, hit "Parse + preview" → switches to PreviewView.
+- [ ] SummaryStrip shows Format / Transactions / Total debits / Total credits tiles.
+- [ ] Statement metadata card lists every `#`-prefixed field from the CSV (bank, account, period_start, period_end, balance_check, etc.). Balance-check status badge: green "OK", red "MISMATCH", grey "N/A".
+- [ ] Sample rows table shows the first 20 parsed transactions.
+- [ ] Confirm + import → PostCommitView reports "Imported X transactions". Visit `/transactions` → the rows are listed newest-first.
+
+### 7.2 Re-import deduplication (audit Gap 1)
+
+- [ ] Re-upload the same file you just imported, pick the same account, parse + preview.
+- [ ] SummaryStrip should now show a banner: "0 new, X duplicates (already imported — will be skipped)".
+- [ ] Confirm button label reads "Nothing new to import" and is disabled.
+- [ ] Cancel → back to the upload step.
+- [ ] Open a slightly different statement that overlaps in date range with what you've already imported. Preview should show "X new, Y duplicates". Confirm → only the X new rows write; PostCommitView reports "Imported X. Skipped Y duplicates that were already imported."
+- [ ] On `/transactions`, edit the category on one of the imported rows. Re-import the same statement → row's category is preserved (skip rather than upsert-overwrite).
+
+### 7.3 Wrong-account import guard (audit Gap 5)
+
+- [ ] Pick a Revolut statement but select a Nationwide account in the dropdown.
+- [ ] Parse + preview → an amber Alert appears above the SummaryStrip: "This statement looks like it's from Revolut but you've selected Nationwide Current. Double-check before importing."
+- [ ] Cancel + redo with the correct account → no warning.
+- [ ] Edge: a statement with a multi-word `#bank` field (e.g. "Nationwide Building Society") still matches a "Nationwide Current" account name (token overlap on "nationwide").
+- [ ] Edge: a statement whose `#bank` field is missing or only contains 3-char abbreviations gets no warning (no false alarms).
+
+### 7.4 Past imports + cascade delete (audit Gap 4)
+
+- [ ] On `/import`, scroll below the upload form. "Past imports" section lists every batch sorted newest-first.
+- [ ] Each row shows: account name, count badge (e.g. "47 txns"), balance-OK or MISMATCH badge if known, period range (if metadata present), import timestamp, format. Historical (back-filled) batches show a "historical" outline badge.
+- [ ] Click the trash icon on a small batch → confirm dialog: "Delete N transactions imported into <account> (period)?"
+- [ ] Confirm → batch row disappears immediately. Visit `/transactions` → the deleted batch's rows are gone too. Tagged debt payments and transfer pairs in the batch are cleared.
+- [ ] Re-import the same statement → it appears as a fresh batch in Past Imports.
+
+### 7.5 Account balance after import
+
+- [ ] After confirming an import, the account's `balance_pennies` on `/accounts` is NOT auto-updated by the import (statements provide row movements, not the closing balance — that's inferred from the metadata's `#closing_balance` if present, but applied manually).
+- [ ] If the statement's `#balance_check` is `MISMATCH`, investigate before trusting the row data — usually means the file was edited or a row was missed.
 
 ---
 
-## 8. 2a exit gate
+## 8. Transactions page interactions
+
+Requires: at least one imported statement. Reseed with `npm run seed` if you want
+the deterministic dogfood fixture set instead.
+
+### 8.1 Auto-categorisation + bulk recategorise
+
+- [ ] `/transactions` loads with All / Untagged outflows / Suggestions / Debt payments tabs at the top. Counts on each tab.
+- [ ] Filter "All": every imported row visible. Each shows merchant, account, category dropdown, amount.
+- [ ] Recategorise a row via the per-row dropdown → the single row updates instantly. A confirm dialog then asks: if siblings (other untagged rows with the same merchant in a different category) exist, "Apply '<cat>' to N other '<merchant>' transactions AND save as a rule?"; otherwise, "Save '<cat>' as a rule for '<merchant>' so future imports auto-categorise this merchant?".
+- [ ] Confirm → matching siblings (if any) update + a new entry appears in `category_rules`. Future imports that produce that merchant will auto-pick the rule's category.
+- [ ] Cancel → only the originally clicked row was updated; no bulk update, no rule saved.
+- [ ] Visit "Manage categories" → built-in + custom categories listed. Add a custom category → appears in the dropdown. Remove → tagged rows fall back to "Other".
+- [ ] Search box filters by merchant / description / category substring. Date / amount / account filters compose with it.
+
+### 8.2 Debt-payment suggestions
+
+- [ ] Filter "Suggestions" shows untagged outflows where the matcher detected a probable debt.
+- [ ] A row with an obvious match (e.g. "BARCLAYCARD" merchant + "Barclaycard Platinum" debt) shows: ✨ "Looks like Barclaycard Platinum?" + "Tag" button + "Other…" dropdown.
+- [ ] Click Tag → row gets a "Debt Payment" badge in the Category column and the debt name in the Tagged To column. Discretionary + recurring-bill inference excludes the row going forward.
+- [ ] Untag (X icon) → row reverts; suggestion may re-appear.
+- [ ] **Specificity guard**: a "PayPal: Steam" merchant must NOT suggest a "PayPal Credit" debt. The shared "paypal" word alone shouldn't trigger when the merchant has a specific non-generic word (Steam) absent from the debt name.
+- [ ] **Frequency floor**: a bare "PayPal" merchant must NOT suggest "PayPal Credit" either, because "paypal" appears in many distinct merchant strings (PayPal, PayPal: Steam, PayPal: Dropbox, etc.) and is too weak a signal alone. The actual "PayPal Credit" repayment row (which has both "paypal" + "credit") DOES still suggest correctly.
+- [ ] Bank-label cases preserved: "HALIFAX CREDIT CARD" merchant still suggests a "Halifax Clarity" debt — "credit" and "card" are generic transaction labels, not disqualifying.
+
+### 8.3 Transfer-pair suggestions (audit Gap 2)
+
+Requires: at least 2 current accounts imported with at least one transfer between them
+(e.g. a "Payment from YEHUDA LEVI" inflow on Revolut paired with the matching outflow
+on Nationwide).
+
+- [ ] Filter "Suggestions" includes candidate transfer pairs alongside debt suggestions.
+- [ ] An eligible row in either direction shows: ↔ "Transfer to <other account>?" / "Transfer from <other account>?" + "Pair" button + dismiss (X) button.
+- [ ] Click Pair → both sides of the pair get a "Transfer" Category badge and "Paired" indicator in the Tagged To column. Both rows persist a shared `transfer_pair_id`. Suggestions count drops by 1 (per-pair, not per-side).
+- [ ] Click Dismiss on a candidate → suggestion goes away. Refresh page → it stays away (`pair_dismissed_at` stamped on both sides).
+- [ ] **One-to-one rule**: if two outflows of the same amount exist on Nationwide and a single inflow on Revolut, NO suggestion is shown (ambiguous). User has to manually tag.
+- [ ] **Date window**: a Friday→Monday transfer (clearance delay) within 3 calendar days should still pair. A 7-day-apart pair should not.
+- [ ] **Excludes debt payments**: a `debt_id`-tagged outflow does not pair (Debt Payment takes precedence over Transfer).
+
+### 8.4 Investment + Transfer categories
+
+- [ ] Category picker dropdown shows "Investment" and "Transfer" alongside Bills / Cash / Charity / etc.
+- [ ] Auto-categorisation: a "JPMorgan Chase" / "Vanguard" / "Hargreaves Lansdown" / "Trading 212" / "Coinbase" merchant lands in Investment automatically.
+- [ ] Transfer category is intentionally empty for auto-rules (safer for "Payment from <person>" patterns) — manual tagging or transfer-pair confirmation is the path.
+- [ ] Tag a "JPMorgan" row → recurring-bill inference no longer suggests it as a "monthly bill" (Investment is excluded from `inferRecurringBills`).
+- [ ] Same exclusion applies to Transfer-tagged rows.
+
+### 8.5 Variable-bill detection (audit Gap 3)
+
+Requires: 3+ months of energy / mobile / utility data with month-to-month amount swings.
+
+- [ ] On the dashboard, a recurring-bill suggestion appears for an "EDF Energy" merchant with three rows around £140 / £110 / £88 (i.e. ±25% spread). Tight ±5% bucketing would have missed it; loose tier (3+ at ±25%) catches it.
+- [ ] The expected_amount_pennies for the inferred bill is the median (£110), not the first-seen value.
+- [ ] Fixed subscriptions (Netflix £13.99 × 3 months) still detect via the tight tier (2+ at ±5%).
+- [ ] A 2-occurrence variable bill (£140 + £88) is NOT inferred — needs 3+ occurrences for the loose tier.
+
+---
+
+## 9. Known gaps — not yet testable
+
+- **Budgets page stubbed.** Empty. Not a dogfood blocker for 2a.
+- **Production email delivery (Section 6 subsection)** deferred indefinitely — Judah decided 2026-04-24 it should not block further development. Functions queue `/mail` docs in both emulator and prod; bolt the firestore-send-email extension on when prod is set up.
+- **Credit-card statement import** out of scope for 2a (`PHASE-2-PLAN.md §2.9`). Manual balance entry via the per-debt "Record statement balance" form. Card-side import deferred to 2b on its own merits.
+
+---
+
+## 10. 2a exit gate
 
 Ship from this branch to a private prod Firebase project (not publicly advertised):
 
