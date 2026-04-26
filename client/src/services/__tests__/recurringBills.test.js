@@ -73,6 +73,28 @@ describe('inferRecurringBills', () => {
     expect(out.map((b) => b.merchant)).toEqual(['Early Bill', 'Late Bill']);
   });
 
+  test('excludes Transfer / Investment / Payments / Debt Payment categories', () => {
+    // A monthly £500 contribution to JPMorgan Chase shouldn't get picked up
+    // as a "recurring bill" — it's a balance transfer, already reflected in
+    // the destination account's balance. Same for any Transfer-tagged row.
+    const transactions = [
+      tx('2026-01-09', 'JPMorgan Chase', -500, 'Investment'),
+      tx('2026-02-09', 'JPMorgan Chase', -500, 'Investment'),
+      tx('2026-03-09', 'JPMorgan Chase', -500, 'Investment'),
+      tx('2026-01-15', 'Payment from Yehuda Levi', -200, 'Transfer'),
+      tx('2026-02-15', 'Payment from Yehuda Levi', -200, 'Transfer'),
+      tx('2026-03-15', 'Payment from Yehuda Levi', -200, 'Transfer'),
+      tx('2026-01-05', 'Netflix', -13.99),
+      tx('2026-02-05', 'Netflix', -13.99),
+      tx('2026-03-05', 'Netflix', -13.99),
+    ];
+    const out = inferRecurringBills({ transactions, asOf: new Date(2026, 3, 15), lookbackMonths: 6 });
+    const merchants = out.map((b) => b.merchant);
+    expect(merchants).toContain('Netflix');
+    expect(merchants).not.toContain('JPMorgan Chase');
+    expect(merchants).not.toContain('Payment from Yehuda Levi');
+  });
+
   test('excludes transactions tagged with debt_id (§3.7 single-source rule)', () => {
     // A debt payment like BARCLAYCARD BP appears every month with the same
     // amount — the old inference would pick it up as a "bill", which would

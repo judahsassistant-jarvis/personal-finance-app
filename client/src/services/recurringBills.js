@@ -16,6 +16,7 @@
 
 const DEFAULT_LOOKBACK_MONTHS = 3;
 const AMOUNT_TOLERANCE = 0.05; // ±5%
+const NON_BILL_CATEGORIES = new Set(['Transfer', 'Investment', 'Payments', 'Debt Payment']);
 
 /**
  * @param {Object} opts
@@ -37,8 +38,13 @@ export function inferRecurringBills({
   // excluded — a debt payment lives in the debts collection as a fixed
   // minimum or similar; surfacing it here too would double-count in the
   // Dashboard's discretionary calc (§3.7 "Debts vs recurring_bills").
+  // Transfer / Investment / Payments / Debt Payment categories are also
+  // excluded: a monthly transfer to your ISA isn't a "bill", and surfacing
+  // it would double-count balance-shifting outflows that the safe-to-spend
+  // calc already handles via per-account opt-in.
   const inWindow = transactions.filter((t) => {
     if (t.debt_id) return false;
+    if (NON_BILL_CATEGORIES.has(t.category)) return false;
     const d = toDate(t.date);
     if (!d) return false;
     return d >= windowStart && d <= asOf && Number(t.amount_pennies || 0) < 0;

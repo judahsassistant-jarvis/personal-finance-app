@@ -7,7 +7,7 @@
  * Monetary values in pennies throughout.
  */
 
-const EXCLUDE_CATEGORIES = new Set(['Payments', 'Transfer', 'Debt Payment', 'Income']);
+const EXCLUDE_CATEGORIES = new Set(['Payments', 'Transfer', 'Investment', 'Debt Payment', 'Income']);
 
 /**
  * @param {Object} opts

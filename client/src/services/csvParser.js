@@ -69,6 +69,16 @@ const MERCHANT_MAP = {
   'ESURE MOTOR': 'Esure Motor',
   DVLA: 'DVLA',
   CURRYS: 'Currys',
+  'JPMORGAN CHASE': 'JPMorgan Chase',
+  JPMORGAN: 'JPMorgan Chase',
+  VANGUARD: 'Vanguard',
+  'HARGREAVES LANSDOWN': 'Hargreaves Lansdown',
+  'AJ BELL': 'AJ Bell',
+  'TRADING 212': 'Trading 212',
+  T212: 'Trading 212',
+  FIDELITY: 'Fidelity',
+  'INTERACTIVE INVESTOR': 'Interactive Investor',
+  'INTERACTIVE BROKERS': 'Interactive Brokers',
 };
 
 export function normalizeMerchant(rawMerchant) {
@@ -121,6 +131,11 @@ const CATEGORY_RULES = {
   Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
   Cash: ['ATM', 'NoteMachine', 'LINK', 'Cashpoint', 'Cash Withdrawal'],
   Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal Credit'],
+  Investment: ['JPMorgan Chase', 'Vanguard', 'Hargreaves Lansdown', 'AJ Bell', 'Trading 212', 'Fidelity', 'Coinbase', 'Interactive Investor', 'Interactive Brokers'],
+  // Transfer is intentionally empty — "Payment from <person>" patterns are too
+  // varied to safely auto-rule (could be income, gift, repayment, transfer
+  // from own account). User tags manually + creates personal rules.
+  Transfer: [],
 };
 
 /**
@@ -140,9 +155,11 @@ export const KNOWN_CATEGORIES = [
   'Health',
   'Income',
   'Insurance',
+  'Investment',
   'Payments',
   'Shopping',
   'Subscriptions',
+  'Transfer',
   'Transport',
   'Other',
 ];

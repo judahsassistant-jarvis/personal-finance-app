@@ -130,6 +130,23 @@ describe('autoCategorize', () => {
     expect(autoCategorize('Zopa')).toBe('Payments');
     expect(autoCategorize('PayPal Credit')).toBe('Payments');
   });
+  test('investment platforms → Investment', () => {
+    expect(autoCategorize('JPMorgan Chase')).toBe('Investment');
+    expect(autoCategorize('Vanguard')).toBe('Investment');
+    expect(autoCategorize('Hargreaves Lansdown')).toBe('Investment');
+    expect(autoCategorize('Trading 212')).toBe('Investment');
+    expect(autoCategorize('Coinbase')).toBe('Investment');
+  });
+  test('Transfer category exists but no auto-rules', () => {
+    expect(KNOWN_CATEGORIES).toContain('Transfer');
+    expect(KNOWN_CATEGORIES).toContain('Investment');
+    // "Payment from <person>" stays Other — too varied to auto-rule.
+    expect(autoCategorize('Payment from Yehuda Levi')).toBe('Other');
+  });
+  test('JPMORGAN normalises through MERCHANT_MAP', () => {
+    expect(normalizeMerchant('To JPMORGAN CHASE BANK, N.A.')).toBe('JPMorgan Chase');
+    expect(normalizeMerchant('JPMORGAN UK')).toBe('JPMorgan Chase');
+  });
   test('PayPal-prefixed underlying merchant routes to underlying category', () => {
     // The length-sorted match should pick the underlying merchant (Dropbox=7,
     // YouTube=7) over the PayPal Credit trigger (13 chars) — but only because

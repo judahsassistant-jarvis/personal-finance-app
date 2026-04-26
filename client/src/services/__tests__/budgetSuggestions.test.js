@@ -44,10 +44,11 @@ describe('generateSuggestions — basic', () => {
 });
 
 describe('generateSuggestions — exclusions', () => {
-  test('excludes Payments / Transfer / Debt Payment / Income', () => {
+  test('excludes Payments / Transfer / Investment / Debt Payment / Income', () => {
     const transactions = [
       tx('2026-02-05', 'Payments', -500),
       tx('2026-03-05', 'Transfer', -200),
+      tx('2026-03-09', 'Investment', -3200),
       tx('2026-04-05', 'Debt Payment', -300),
       tx('2026-04-15', 'Income', 2000),
       tx('2026-04-16', 'Groceries', -50),
