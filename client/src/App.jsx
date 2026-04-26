@@ -10,6 +10,10 @@ import FirstRun from './pages/FirstRun';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import DebtPlanner from './pages/DebtPlanner';
+import DebtPlannerLayout from './pages/debts/DebtPlannerLayout';
+import WhatIf from './pages/debts/WhatIf';
+import Bonus from './pages/debts/Bonus';
+import Reminders from './pages/debts/Reminders';
 import Transactions from './pages/Transactions';
 import Import from './pages/Import';
 import Budgets from './pages/Budgets';
@@ -39,7 +43,12 @@ export default function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="accounts" element={<Accounts />} />
-          <Route path="debts" element={<DebtPlanner />} />
+          <Route path="debts" element={<DebtPlannerLayout />}>
+            <Route index element={<DebtPlanner />} />
+            <Route path="what-if" element={<WhatIf />} />
+            <Route path="bonus" element={<Bonus />} />
+            <Route path="reminders" element={<Reminders />} />
+          </Route>
           <Route path="transactions" element={<Transactions />} />
           <Route path="import" element={<Import />} />
           <Route path="budgets" element={<Budgets />} />

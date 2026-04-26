@@ -31,13 +31,10 @@ import UtilisationBar from '../components/debts/UtilisationBar.jsx';
 import PayoffProgressBar from '../components/debts/PayoffProgressBar.jsx';
 import ForecastChart from '../components/debts/ForecastChart.jsx';
 import MilestonesCard from '../components/debts/MilestonesCard.jsx';
-import BonusPaymentCard from '../components/debts/BonusPaymentCard.jsx';
-import WhatIfScenarioCard from '../components/debts/WhatIfScenarioCard.jsx';
 import PromoCliffCountdown from '../components/debts/PromoCliffCountdown.jsx';
 import RecordSnapshotForm from '../components/debts/RecordSnapshotForm.jsx';
 import PaymentHistoryPanel from '../components/debts/PaymentHistoryPanel.jsx';
 import ProgressCard from '../components/debts/ProgressCard.jsx';
-import NotificationsSettingsCard from '../components/debts/NotificationsSettingsCard.jsx';
 
 // Single source of truth for subtype → icon. Used for both the group
 // header (via GROUPS below) and the per-row visual badge in DebtRow.
@@ -180,9 +177,6 @@ export default function DebtPlanner() {
           <StrategyComparison debts={debts} buckets={buckets} />
           <ForecastChart debts={debts} buckets={buckets} />
           <MilestonesCard debts={debts} buckets={buckets} />
-          <BonusPaymentCard debts={debts} buckets={buckets} />
-          <WhatIfScenarioCard debts={debts} buckets={buckets} />
-          <NotificationsSettingsCard />
         </>
       )}
 

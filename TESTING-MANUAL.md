@@ -76,17 +76,43 @@ Requires: signed in with at least one account OR empty.
 
 Requires: seeded or hand-built dataset with at least 3 debts.
 
-- [ ] `/debts` loads with per-subtype grouping (cards / BNPL / loans / overdrafts / store cards).
+The Debt Planner is now split across four sub-routes — top-nav dropdown ("Debt
+Planner" → Overview / What-If BT / Bonus payment / Reminders) and an in-page
+tab strip mirror the same structure. The hover-or-click dropdown closes on
+route change and on click-outside.
+
+### 4.1 Overview (`/debts`)
+
+- [ ] Tab strip at the top shows Overview / What-If BT / Bonus payment / Reminders. Overview is highlighted.
+- [ ] Per-subtype debt grouping (cards / BNPL / loans / overdrafts / store cards).
 - [ ] Add a new credit card debt → add 2 buckets (Purchases 19.9%, BT 0% promo ending 14d from now).
 - [ ] Promo cliff countdown pill appears on the card row with an urgency band colour.
 - [ ] Strategy Comparison card shows 4 columns (min-only / avalanche / snowball / hybrid) with a trophy on the winner.
 - [ ] Toggle "Auto-suggest budget" off → budget input becomes editable. Turn back on → input goes read-only.
 - [ ] Forecast chart renders with one line per debt, Projected / Utilisation / Actual / Savings tabs, all populated.
 - [ ] Milestones card lists debt-free date + per-category payoff months.
+
+### 4.2 What-If BT (`/debts/what-if`)
+
+- [ ] Click "What-If BT" tab → same H1-style header per page; What-If scenario card centred with descriptive subtitle.
+- [ ] Single tab: pick a source card + spec a target BT (0% APR, 30% fee, 18mo) → net-savings banner shows.
+- [ ] Multi tab: eligible debts listed with checkboxes, greedy allocation by APR desc.
+
+### 4.3 Bonus payment (`/debts/bonus`)
+
 - [ ] Bonus Payment card: enter £500 at month 6 → "Saves £X, clears N months sooner" summary.
-- [ ] What-If Scenario card, Single tab: pick a source card + spec a target BT (0% APR, 30% fee, 18mo) → net-savings banner shows.
-- [ ] What-If, Multi tab: eligible debts listed with checkboxes, greedy allocation by APR desc.
+- [ ] Empty state: with zero debts, page shows the "Add debts on the Overview tab first" placeholder rather than a broken card.
+
+### 4.4 Reminders (`/debts/reminders`)
+
 - [ ] Notifications Settings card (Sprint 7): change `reminder_days_before` to 5, Save. Value persists.
+
+### 4.5 Navigation polish
+
+- [ ] Hovering "Debt Planner" in the top nav opens the dropdown.
+- [ ] Click outside dropdown → closes.
+- [ ] Selecting a sub-item navigates AND closes the dropdown.
+- [ ] In-page tabs match the active route (Overview tab uses `end` so it doesn't stay highlighted on sub-routes).
 
 ---
 

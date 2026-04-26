@@ -3,16 +3,26 @@ import { useDispatch, useSelector } from 'react-redux';
 import { LogOut } from 'lucide-react';
 import { signOut } from '../store/authSlice.js';
 import { Button } from './ui/button.jsx';
+import NavDropdown from './NavDropdown.jsx';
 import { cn } from '../lib/utils.js';
 
+// Plain top-level entries. Debt Planner is special-cased below as a
+// dropdown so the sub-routes (What-If / Bonus / Reminders) are reachable
+// from the global nav without flat-listing them all.
 const navItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/accounts', label: 'Accounts' },
-  { to: '/debts', label: 'Debt Planner' },
   { to: '/transactions', label: 'Transactions' },
   { to: '/import', label: 'Import' },
   { to: '/budgets', label: 'Budgets' },
   { to: '/forecast', label: 'Forecast' },
+];
+
+const debtPlannerItems = [
+  { to: '/debts', end: true, label: 'Overview' },
+  { to: '/debts/what-if', label: 'What-If BT' },
+  { to: '/debts/bonus', label: 'Bonus payment' },
+  { to: '/debts/reminders', label: 'Reminders' },
 ];
 
 export default function Layout() {
@@ -27,7 +37,25 @@ export default function Layout() {
             <div className="flex items-center gap-8">
               <span className="font-semibold text-sm tracking-tight">Personal Finance</span>
               <nav className="flex items-center gap-1">
-                {navItems.map((item) => (
+                {navItems.slice(0, 2).map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) =>
+                      cn(
+                        'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-secondary text-secondary-foreground'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
+                      )
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+                <NavDropdown label="Debt Planner" basePath="/debts" items={debtPlannerItems} />
+                {navItems.slice(2).map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
