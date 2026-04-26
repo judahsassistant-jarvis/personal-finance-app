@@ -163,14 +163,18 @@ export default function DebtPlanner() {
         )}
       </div>
 
-      {debtForm && (
+      {/* "Add debt" form lives at the top of the page next to the Add button —
+          it's the natural anchor for a brand-new entry. The Edit form renders
+          inline above the relevant group instead (see grouped.map below) so
+          the user doesn't lose their scroll position. */}
+      {debtForm?.mode === 'add' && (
         <DebtForm
-          editingDebt={debtForm.mode === 'edit' ? debtForm.debt : null}
+          editingDebt={null}
           onClose={() => setDebtForm(null)}
         />
       )}
 
-      {debts.length > 0 && !debtForm && (
+      {debts.length > 0 && debtForm?.mode !== 'add' && (
         <>
           <ProgressCard debts={debts} buckets={buckets} variant="detail" />
           <StrategyCard rows={allRows} />
@@ -189,26 +193,38 @@ export default function DebtPlanner() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {grouped.map((group) => (
-            group.rows.length > 0 && (
-              <DebtGroup
-                key={group.key}
-                group={group}
-                bucketForm={bucketForm}
-                snapshotForm={snapshotForm}
-                historyOpenId={historyOpenId}
-                onEditDebt={(debt) => setDebtForm({ mode: 'edit', debt })}
-                onDeleteDebt={handleDeleteDebt}
-                onAddBucket={(debtId) => setBucketForm({ debtId, bucket: null })}
-                onEditBucket={(debtId, bucket) => setBucketForm({ debtId, bucket })}
-                onDeleteBucket={handleDeleteBucket}
-                onCloseBucketForm={() => setBucketForm(null)}
-                onRecordSnapshot={(debtId) => setSnapshotForm({ debtId })}
-                onCloseSnapshotForm={() => setSnapshotForm(null)}
-                onToggleHistory={(debtId) => setHistoryOpenId((prev) => prev === debtId ? null : debtId)}
-              />
-            )
-          ))}
+          {grouped.map((group) => {
+            if (group.rows.length === 0) return null;
+            const editingHere =
+              debtForm?.mode === 'edit' &&
+              group.rows.some((r) => r.debt.id === debtForm.debt.id);
+            return (
+              <div key={group.key} className="space-y-4">
+                {editingHere && (
+                  <DebtForm
+                    editingDebt={debtForm.debt}
+                    onClose={() => setDebtForm(null)}
+                  />
+                )}
+                <DebtGroup
+                  group={group}
+                  bucketForm={bucketForm}
+                  snapshotForm={snapshotForm}
+                  historyOpenId={historyOpenId}
+                  hideEditingDebtId={editingHere ? debtForm.debt.id : null}
+                  onEditDebt={(debt) => setDebtForm({ mode: 'edit', debt })}
+                  onDeleteDebt={handleDeleteDebt}
+                  onAddBucket={(debtId) => setBucketForm({ debtId, bucket: null })}
+                  onEditBucket={(debtId, bucket) => setBucketForm({ debtId, bucket })}
+                  onDeleteBucket={handleDeleteBucket}
+                  onCloseBucketForm={() => setBucketForm(null)}
+                  onRecordSnapshot={(debtId) => setSnapshotForm({ debtId })}
+                  onCloseSnapshotForm={() => setSnapshotForm(null)}
+                  onToggleHistory={(debtId) => setHistoryOpenId((prev) => prev === debtId ? null : debtId)}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -217,11 +233,19 @@ export default function DebtPlanner() {
 
 function DebtGroup({
   group, bucketForm, snapshotForm, historyOpenId,
+  hideEditingDebtId,
   onEditDebt, onDeleteDebt,
   onAddBucket, onEditBucket, onDeleteBucket, onCloseBucketForm,
   onRecordSnapshot, onCloseSnapshotForm, onToggleHistory,
 }) {
   const Icon = group.icon;
+  // The row currently being edited renders as the inline form above this
+  // group (see DebtPlanner). Skip its read-only row here so the user isn't
+  // looking at two views of the same debt at once.
+  const visibleRows = hideEditingDebtId
+    ? group.rows.filter((r) => r.debt.id !== hideEditingDebtId)
+    : group.rows;
+  if (visibleRows.length === 0) return null;
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -232,7 +256,7 @@ function DebtGroup({
         </div>
       </CardHeader>
       <CardContent className="pt-0 -my-3">
-        {group.rows.map((row, i) => (
+        {visibleRows.map((row, i) => (
           <div key={row.debt.id}>
             {i > 0 && <Separator />}
             <DebtRow

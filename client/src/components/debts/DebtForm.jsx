@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { X } from 'lucide-react';
 import { addDebt, editDebt } from '../../store/debtsSlice.js';
@@ -32,11 +32,22 @@ export default function DebtForm({ editingDebt, onClose }) {
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const cardRef = useRef(null);
 
   useEffect(() => {
     setForm(editingDebt ? debtToForm(editingDebt) : { ...emptyDebtForm });
     setErrors({});
     setSubmitError(null);
+  }, [editingDebt]);
+
+  // Edit-mode: the form mounts above the relevant debt group, which can be
+  // mid-page or below the fold. Scroll it into view so the user doesn't lose
+  // sight of what they just clicked. Add-mode renders at the top of the page
+  // alongside the Add button — already in view, no scroll needed.
+  useEffect(() => {
+    if (editingDebt && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }, [editingDebt]);
 
   const isCardLike = CARD_LIKE_SUBTYPES.has(form.subtype);
@@ -68,11 +79,12 @@ export default function DebtForm({ editingDebt, onClose }) {
   const field = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
   return (
+    <div ref={cardRef}>
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle>{editingDebt ? 'Edit debt' : 'Add debt'}</CardTitle>
+            <CardTitle>{editingDebt ? `Edit "${editingDebt.name}"` : 'Add debt'}</CardTitle>
             <CardDescription>
               {isCardLike
                 ? 'For credit / balance-transfer / store cards. Balance is tracked via buckets.'
@@ -266,6 +278,7 @@ export default function DebtForm({ editingDebt, onClose }) {
         </CardFooter>
       </form>
     </Card>
+    </div>
   );
 }
 
