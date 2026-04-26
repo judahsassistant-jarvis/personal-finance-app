@@ -28,12 +28,21 @@ admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT });
 const db = admin.firestore();
 
 async function run() {
-  // Pull every transaction whose stored merchant is the old collapsed value.
-  // Filtering server-side keeps the scan small even on a populated dogfood set.
-  const snap = await db.collection('transactions').where('merchant', '==', 'PayPal').get();
+  // Scan by description prefix, not by current merchant. The old parser was
+  // inconsistent: when MERCHANT_MAP held a key longer than 'PAYPAL' that was
+  // contained in the inner part (MICROSOFT, GOOGLE YOUTUBE, DROPBOX), the
+  // length-sorted substring match resolved to that inner merchant and
+  // dropped the PayPal context entirely. Anything shorter (or unknown like
+  // STEAM, SHOPIFY) collapsed to 'PayPal'. So we can't filter by merchant —
+  // we have to look at the source description.
+  const snap = await db
+    .collection('transactions')
+    .where('description', '>=', 'PAYPAL *')
+    .where('description', '<', 'PAYPAL *' + '￿')
+    .get();
 
   if (snap.empty) {
-    console.log('No PayPal transactions to back-fill. Nothing to do.');
+    console.log('No PAYPAL *X transactions to back-fill. Nothing to do.');
     return;
   }
 
