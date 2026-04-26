@@ -51,6 +51,7 @@ const MERCHANT_MAP = {
   'BURGER KING': 'Burger King',
   'LORDS PHARMACY': 'Lords Pharmacy',
   PAYPAL: 'PayPal',
+  STEAM: 'Steam',
   'OPENAI *CHATGPT': 'OpenAI ChatGPT',
   'UTILITY WAREHOUSE': 'Utility Warehouse',
   HALFORDS: 'Halfords',
@@ -79,6 +80,19 @@ export function normalizeMerchant(rawMerchant) {
     .replace(/\s+\d{4}$/, '')
     .trim();
 
+  // PayPal-mediated transactions arrive as `PAYPAL *<inner>`. Without special-
+  // casing, every one collapses to bare 'PayPal' and the underlying merchant is
+  // lost. The `PAYPAL *PAYPAL CREDIT` line is the credit-account repayment
+  // (a debt) — kept as a flat 'PayPal Credit' so debtPaymentMatcher can fuzzy-
+  // tag it. Everything else gets prefixed: `PayPal: Steam`, `PayPal: Dropbox`.
+  const paypalMatch = cleaned.match(/^PAYPAL\s*\*\s*(.+)$/i);
+  if (paypalMatch) {
+    const inner = paypalMatch[1].trim();
+    if (/^PAYPAL\s+CREDIT/i.test(inner)) return 'PayPal Credit';
+    const innerNormalised = normalizeMerchant(inner);
+    return innerNormalised === 'Unknown' ? 'PayPal' : `PayPal: ${innerNormalised}`;
+  }
+
   const upper = cleaned.toUpperCase();
   const sortedKeys = Object.keys(MERCHANT_MAP).sort((a, b) => b.length - a.length);
   for (const key of sortedKeys) {
@@ -106,7 +120,7 @@ const CATEGORY_RULES = {
   Charity: [],
   Shopping: ['Tesco', 'Sainsburys', 'Asda', 'Aldi', 'Lidl', 'Morrisons', 'Waitrose', 'M&S', 'TK Maxx', 'Primark', 'Argos', 'Amazon', 'Currys', 'Halfords', 'Superdrug', 'Boots', 'Zable'],
   Cash: ['ATM', 'NoteMachine', 'LINK', 'Cashpoint', 'Cash Withdrawal'],
-  Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal'],
+  Payments: ['Nationwide', 'Virgin Money', 'Amex', 'Zopa', 'Samsung Finance', 'PayPal Credit'],
 };
 
 /**

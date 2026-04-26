@@ -42,6 +42,20 @@ describe('normalizeMerchant', () => {
     expect(normalizeMerchant('UBER *EATS ORDER')).toBe('Uber Eats');
     expect(normalizeMerchant('UBER *ONE SUB')).toBe('Uber One');
   });
+  describe('PayPal *X convention', () => {
+    test('PayPal Credit repayment is its own merchant (no prefix)', () => {
+      expect(normalizeMerchant('PAYPAL *PAYPAL CREDIT 35314369001')).toBe('PayPal Credit');
+    });
+    test('known underlying merchant gets prefixed', () => {
+      expect(normalizeMerchant('PAYPAL *DROPBOXINTE D888 3531436')).toBe('PayPal: Dropbox');
+      expect(normalizeMerchant('PAYPAL *GOOGLE YOUTUBE S 35314369')).toBe('PayPal: YouTube');
+      expect(normalizeMerchant('PAYPAL *MICROSOFT 35314369001')).toBe('PayPal: Microsoft');
+      expect(normalizeMerchant('PAYPAL *STEAM GAMES 04258899642')).toBe('PayPal: Steam');
+    });
+    test('unknown underlying merchant title-cases with prefix', () => {
+      expect(normalizeMerchant('PAYPAL *SHOPIFY 4029357733')).toBe('PayPal: Shopify');
+    });
+  });
 });
 
 describe('parseDate', () => {
@@ -114,6 +128,15 @@ describe('autoCategorize', () => {
   test('payments', () => {
     expect(autoCategorize('Amex')).toBe('Payments');
     expect(autoCategorize('Zopa')).toBe('Payments');
+    expect(autoCategorize('PayPal Credit')).toBe('Payments');
+  });
+  test('PayPal-prefixed underlying merchant routes to underlying category', () => {
+    // The length-sorted match should pick the underlying merchant (Dropbox=7,
+    // YouTube=7) over the PayPal Credit trigger (13 chars) — but only because
+    // 'PayPal Credit' as a substring is absent from these strings.
+    expect(autoCategorize('PayPal: Dropbox')).toBe('Subscriptions');
+    expect(autoCategorize('PayPal: YouTube')).toBe('Subscriptions');
+    expect(autoCategorize('PayPal: Microsoft')).toBe('Other');
   });
   test('cash withdrawals → Cash', () => {
     expect(autoCategorize('ATM Withdrawal Notemachine Ltd')).toBe('Cash');
