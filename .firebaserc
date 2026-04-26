@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "personal-finance-app-dev-3ffb2"
+    "default": "personal-finance-app-dev-3ffb2",
+    "prod": "personal-finance-app-prod"
   }
 }
