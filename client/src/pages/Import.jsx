@@ -3,7 +3,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { Upload, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { fetchAccounts } from '../store/accountsSlice.js';
-import { parseCSVFile, confirmImport, clearImport } from '../store/transactionsSlice.js';
+import { fetchTransactions, parseCSVFile, confirmImport, clearImport } from '../store/transactionsSlice.js';
+import { detectBankMismatch } from '../services/bankNameGuard.js';
 import { formatGBP, LIQUIDITY } from '../firebase/schema.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card.jsx';
 import { Button } from '../components/ui/button.jsx';
@@ -34,6 +35,11 @@ export default function Import() {
 
   useEffect(() => {
     dispatch(fetchAccounts());
+    // Eager-fetch transactions so the preview can partition into new vs
+    // duplicate against the in-memory list — avoids an extra Firestore round
+    // trip at preview time. Transactions are loaded lazily today so this is
+    // the first place they're needed pre-Import.
+    dispatch(fetchTransactions());
   }, [dispatch]);
 
   // Default account selection to the first liquid account once accounts load.
@@ -59,8 +65,12 @@ export default function Import() {
     setCommitting(true);
     setCommitError(null);
     try {
-      const written = await dispatch(confirmImport()).unwrap();
-      setPostCommit({ count: written.length, batchId: importResult?.batch_id });
+      const result = await dispatch(confirmImport()).unwrap();
+      setPostCommit({
+        count: result.written.length,
+        skipped: result.skipped,
+        batchId: importResult?.batch_id,
+      });
       setFile(null);
     } catch (err) {
       setCommitError(err.message ?? 'Failed to commit import');
@@ -80,7 +90,14 @@ export default function Import() {
   }
 
   if (postCommit) {
-    return <PostCommitView count={postCommit.count} onStartOver={handleStartOver} navigate={navigate} />;
+    return (
+      <PostCommitView
+        count={postCommit.count}
+        skipped={postCommit.skipped}
+        onStartOver={handleStartOver}
+        navigate={navigate}
+      />
+    );
   }
 
   if (importResult) {
@@ -218,6 +235,32 @@ function PreviewView({
       : balanceCheck?.startsWith('N/A') ? 'secondary'
       : null;
 
+  // Audit Gap 1 — partition into new vs duplicate against in-memory
+  // transactions. Eager-fetch on Import page mount loads them into Redux so
+  // this is a pure client-side compute (no Firestore round trip).
+  const existingTxs = useSelector((s) => s.transactions.items);
+  const existingDedupKeys = useMemo(
+    () => new Set(existingTxs.map((t) => t.dedup_key).filter(Boolean)),
+    [existingTxs],
+  );
+  const { newCount, duplicateCount } = useMemo(() => {
+    let n = 0;
+    let d = 0;
+    for (const t of result.transactions) {
+      if (t.dedup_key && existingDedupKeys.has(t.dedup_key)) d += 1;
+      else n += 1;
+    }
+    return { newCount: n, duplicateCount: d };
+  }, [result.transactions, existingDedupKeys]);
+
+  // Audit Gap 5 — wrong-account import guard. The Claude-statement metadata
+  // block carries `#bank` / `#account`; if neither shares a 4+ char word
+  // with the selected account name, it's almost certainly the wrong file.
+  const bankMismatch = useMemo(
+    () => detectBankMismatch(md, account),
+    [md, account],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -230,13 +273,28 @@ function PreviewView({
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={committing}>Cancel</Button>
-          <Button variant="accent" onClick={onConfirm} disabled={committing || result.transactions.length === 0}>
-            {committing ? 'Importing…' : `Confirm + import ${result.transactions.length} txns`}
+          <Button variant="accent" onClick={onConfirm} disabled={committing || newCount === 0}>
+            {committing
+              ? 'Importing…'
+              : newCount === 0
+                ? 'Nothing new to import'
+                : `Confirm + import ${newCount} new txn${newCount === 1 ? '' : 's'}`}
           </Button>
         </div>
       </div>
 
-      <SummaryStrip result={result} />
+      {bankMismatch && (
+        <Alert variant="destructive">
+          <AlertTriangle className="w-4 h-4" />
+          <AlertDescription>
+            This statement looks like it's from <span className="font-medium">{bankMismatch.statementBank}</span>
+            {' '}but you've selected <span className="font-medium">{account?.name ?? '(unknown)'}</span>.
+            Double-check before importing — wrong-account imports are not easy to undo today.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <SummaryStrip result={result} newCount={newCount} duplicateCount={duplicateCount} />
 
       {Object.keys(md).length > 0 && (
         <MetadataCard metadata={md} balanceCheck={balanceCheck} balanceBadgeVariant={balanceBadgeVariant} />
@@ -304,16 +362,26 @@ function PreviewView({
   );
 }
 
-function SummaryStrip({ result }) {
+function SummaryStrip({ result, newCount, duplicateCount }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <Tile label="Format" value={result.format} mono />
-      <Tile label="Transactions" value={result.count.toString()} />
-      <Tile label="Total debits" value={formatGBP(result.total_debit_pennies)} />
-      <Tile label="Total credits" value={formatGBP(result.total_credit_pennies)} />
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Tile label="Format" value={result.format} mono />
+        <Tile label="Transactions" value={result.count.toString()} />
+        <Tile label="Total debits" value={formatGBP(result.total_debit_pennies)} />
+        <Tile label="Total credits" value={formatGBP(result.total_credit_pennies)} />
+      </div>
+      {duplicateCount > 0 && (
+        <div className="rounded-md border border-border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{newCount} new</span>,
+          {' '}<span className="font-medium text-foreground">{duplicateCount} duplicate</span>
+          {duplicateCount === 1 ? '' : 's'} (already imported — will be skipped).
+        </div>
+      )}
     </div>
   );
 }
+
 
 function MetadataCard({ metadata, balanceCheck, balanceBadgeVariant }) {
   const entries = Object.entries(metadata);
@@ -365,14 +433,19 @@ function Tile({ label, value, mono }) {
 // Post-commit step
 // ---------------------------------------------------------------------------
 
-function PostCommitView({ count, onStartOver, navigate }) {
+function PostCommitView({ count, skipped, onStartOver, navigate }) {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-start gap-3">
         <CheckCircle2 className="w-6 h-6 text-emerald-600 mt-1" />
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Imported {count} transactions</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Imported {count} transaction{count === 1 ? '' : 's'}</h1>
           <p className="text-sm text-muted-foreground mt-1">
+            {skipped > 0 && (
+              <>
+                Skipped <span className="font-medium text-foreground">{skipped}</span> duplicate{skipped === 1 ? '' : 's'} that were already imported.{' '}
+              </>
+            )}
             They're written to Firestore and will appear on the Transactions page.
             Auto-detected debt-payment matches show up there as suggestions.
           </p>
