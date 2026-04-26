@@ -68,6 +68,30 @@ export async function fetchWhere(collectionName, userId, extraClauses = [], orde
   return serializeSnapshot(snap);
 }
 
+/**
+ * Fetch user-scoped docs where `field in [values]`. Chunks the values into
+ * batches of 30 (Firestore's `in` limit) and concatenates the results.
+ *
+ * Used by import-time dedup: query for transactions matching the candidate
+ * dedup_keys to partition the import into new vs duplicate.
+ */
+export async function fetchByFieldIn(collectionName, userId, field, values) {
+  if (!userId) throw new Error('fetchByFieldIn requires userId');
+  if (!Array.isArray(values) || values.length === 0) return [];
+  const out = [];
+  for (let i = 0; i < values.length; i += 30) {
+    const chunk = values.slice(i, i + 30);
+    const q = query(
+      collection(db, collectionName),
+      where('user_id', '==', userId),
+      where(field, 'in', chunk),
+    );
+    const snap = await getDocs(q);
+    out.push(...serializeSnapshot(snap));
+  }
+  return out;
+}
+
 /** Create a new doc, stamping user_id automatically. */
 export async function createDoc(collectionName, userId, data) {
   if (!userId) throw new Error('createDoc requires userId');

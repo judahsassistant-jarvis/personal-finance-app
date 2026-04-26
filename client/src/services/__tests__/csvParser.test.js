@@ -7,6 +7,7 @@ import {
   isKnownRecurring,
   detectRecurringBills,
   parseCSV,
+  computeDedupKey,
   KNOWN_CATEGORIES,
 } from '../csvParser.js';
 
@@ -398,5 +399,65 @@ describe('parseCSV', () => {
     // The #1234 is stripped by normalizeMerchant's #-digits rule, but the
     // row itself survives — that's the only guarantee this test makes.
     expect(result.transactions[0].amount_pennies).toBe(-4218);
+  });
+});
+
+describe('computeDedupKey (audit Gap 1)', () => {
+  test('produces a 16-hex-char string', () => {
+    const k = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO STORES #1234');
+    expect(k).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  test('deterministic — same inputs → same key', () => {
+    const a = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO STORES');
+    const b = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO STORES');
+    expect(a).toBe(b);
+  });
+
+  test('differs when account changes', () => {
+    const a = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO STORES');
+    const b = computeDedupKey('acct-2', '2026-03-15', -4218, 'TESCO STORES');
+    expect(a).not.toBe(b);
+  });
+
+  test('differs when date changes', () => {
+    const a = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO STORES');
+    const b = computeDedupKey('acct-1', '2026-03-16', -4218, 'TESCO STORES');
+    expect(a).not.toBe(b);
+  });
+
+  test('differs when amount changes (even by 1 penny)', () => {
+    const a = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO STORES');
+    const b = computeDedupKey('acct-1', '2026-03-15', -4217, 'TESCO STORES');
+    expect(a).not.toBe(b);
+  });
+
+  test('differs when description changes', () => {
+    const a = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO STORES');
+    const b = computeDedupKey('acct-1', '2026-03-15', -4218, 'TESCO METRO');
+    expect(a).not.toBe(b);
+  });
+
+  test('parseCSV stamps dedup_key on every transaction', () => {
+    const csv = [
+      'Date,Description,Amount',
+      '2026-03-15,TESCO STORES,-42.18',
+      '2026-03-16,SHELL PETROL,-55.00',
+    ].join('\n');
+    const result = parseCSV(csv, 'acct-1');
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions[0].dedup_key).toMatch(/^[0-9a-f]{16}$/);
+    expect(result.transactions[1].dedup_key).toMatch(/^[0-9a-f]{16}$/);
+    expect(result.transactions[0].dedup_key).not.toBe(result.transactions[1].dedup_key);
+  });
+
+  test('parseCSV produces stable dedup_key across runs of the same file', () => {
+    const csv = [
+      'Date,Description,Amount',
+      '2026-03-15,TESCO STORES,-42.18',
+    ].join('\n');
+    const a = parseCSV(csv, 'acct-1');
+    const b = parseCSV(csv, 'acct-1');
+    expect(a.transactions[0].dedup_key).toBe(b.transactions[0].dedup_key);
   });
 });

@@ -6,7 +6,8 @@
   "scripts": {
     "seed": "cross-env FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=personal-finance-app-dev-3ffb2 node seed.js",
     "clear": "cross-env FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=personal-finance-app-dev-3ffb2 node seed.js --clear",
-    "backfill-paypal": "cross-env FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=personal-finance-app-dev-3ffb2 node backfill-paypal.js"
+    "backfill-paypal": "cross-env FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=personal-finance-app-dev-3ffb2 node backfill-paypal.js",
+    "backfill-dedup-key": "cross-env FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=personal-finance-app-dev-3ffb2 node backfill-dedup-key.js"
   },
   "dependencies": {
     "cross-env": "^7.0.3",

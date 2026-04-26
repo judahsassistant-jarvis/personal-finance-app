@@ -3,6 +3,7 @@ import { Timestamp } from 'firebase/firestore';
 import { COLLECTIONS, newTransactionDoc } from '../firebase/schema.js';
 import {
   fetchWhere,
+  fetchByFieldIn,
   createDoc,
   updateDocById,
   deleteDocById,
@@ -111,16 +112,34 @@ export const dismissTransferPair = createAsyncThunk(
   },
 );
 
-/** Commit the previewed import results to Firestore via a batched write. */
+/**
+ * Commit the previewed import results to Firestore via a batched write.
+ *
+ * Audit Gap 1 — re-import deduplication: before writing, query existing
+ * transactions matching the candidate `dedup_key`s. Skip rows whose key
+ * already exists. This makes re-imports of the same statement (or
+ * overlapping date ranges across two statements) idempotent — no silent
+ * duplicates. User-edited fields on existing rows (category, debt_id,
+ * transfer_pair_id, etc.) are preserved because we skip rather than
+ * upsert-overwrite.
+ */
 export const confirmImport = createAsyncThunk('transactions/confirmImport', async (_, { getState }) => {
   const uid = getState().auth.user.uid;
   const preview = getState().transactions.importResult;
   if (!preview || !preview.transactions) throw new Error('No import preview to confirm');
-  const toWrite = preview.transactions.map((t) => ({
+  const candidates = preview.transactions;
+  const keys = candidates.map((t) => t.dedup_key).filter(Boolean);
+  const existing = keys.length > 0
+    ? await fetchByFieldIn(COLLECTION, uid, 'dedup_key', keys)
+    : [];
+  const existingKeys = new Set(existing.map((t) => t.dedup_key).filter(Boolean));
+  const fresh = candidates.filter((t) => !t.dedup_key || !existingKeys.has(t.dedup_key));
+  const toWrite = fresh.map((t) => ({
     ...t,
     date: typeof t.date === 'string' ? Timestamp.fromDate(new Date(t.date)) : t.date,
   }));
-  return batchCreate(COLLECTION, uid, toWrite);
+  const written = toWrite.length > 0 ? await batchCreate(COLLECTION, uid, toWrite) : [];
+  return { written, skipped: candidates.length - fresh.length };
 });
 
 const slice = createSlice({
@@ -179,7 +198,7 @@ const slice = createSlice({
     b.addCase(parseCSVFile.fulfilled, (s, a) => { s.importLoading = false; s.importResult = a.payload; });
     b.addCase(parseCSVFile.rejected, (s, a) => { s.importLoading = false; s.error = a.error.message; });
     b.addCase(confirmImport.fulfilled, (s, a) => {
-      s.items = [...a.payload, ...s.items];
+      s.items = [...a.payload.written, ...s.items];
       s.importResult = null;
     });
   },

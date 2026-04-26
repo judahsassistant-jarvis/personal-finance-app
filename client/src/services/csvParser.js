@@ -416,6 +416,11 @@ export function parseCSV(fileContent, accountId, { importBatchId, userRules = []
     const autoCategory = autoCategorize(result.merchant, userRules);
     const autoRecurring = isKnownRecurring(result.merchant);
     const amountPennies = poundsToPennies(result.amount);
+    // Dedup key uses the RAW description (not the normalised merchant) so it
+    // stays stable across MERCHANT_MAP changes — see audit Gap 1. account_id +
+    // ISO date + integer amount + raw description is the natural composite
+    // key for "is this the same row I already imported?"
+    const dedupKey = computeDedupKey(accountId, result.date, amountPennies, result.description);
 
     transactions.push({
       account_id: accountId,
@@ -428,6 +433,7 @@ export function parseCSV(fileContent, accountId, { importBatchId, userRules = []
       is_recurring: autoRecurring,
       imported_from: format === 'generic' ? 'csv' : format,
       import_batch_id: batchId,
+      dedup_key: dedupKey,
     });
   }
 
@@ -452,4 +458,44 @@ export function parseCSV(fileContent, accountId, { importBatchId, userRules = []
 function cryptoRandomId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Dedup key (audit Gap 1: re-import deduplication)
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic key for "is this row already imported?" lookups. Composed of
+ * account_id + ISO date + integer amount + a hash of the raw description.
+ * The raw description (not normalised merchant) is hashed so the key stays
+ * stable when MERCHANT_MAP changes.
+ *
+ * Pure FNV-1a 64-bit (concatenation of two 32-bit hashes with different seeds)
+ * → 16 hex chars. Sync, no Web Crypto dependency. Collision probability across
+ * the dedup space (per-account, per-day, per-amount) is effectively zero at
+ * personal-finance dataset scale.
+ *
+ * Stored on each transaction as `dedup_key`. Queryable via the
+ * `(user_id, dedup_key)` composite index for partitioning re-imported rows
+ * into new vs duplicate.
+ *
+ * @param {string} accountId
+ * @param {string} isoDate - YYYY-MM-DD
+ * @param {number} amountPennies - integer; signed
+ * @param {string} description - raw description from the CSV
+ * @returns {string} 16-hex-char composite key
+ */
+export function computeDedupKey(accountId, isoDate, amountPennies, description) {
+  const composite = `${accountId || ''}|${isoDate || ''}|${amountPennies | 0}|${description || ''}`;
+  return fnv1a32(composite, 0x811c9dc5).toString(16).padStart(8, '0')
+       + fnv1a32(composite, 0xa5a5a5a5).toString(16).padStart(8, '0');
+}
+
+function fnv1a32(str, seed) {
+  let hash = seed >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
 }

@@ -95,6 +95,14 @@
       ]
     },
     {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "dedup_key", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "balance_snapshots",
       "queryScope": "COLLECTION",
       "fields": [

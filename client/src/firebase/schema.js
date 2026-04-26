@@ -286,6 +286,7 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
  * @property {string} [debt_id] - set if category === "Debt Payment"
  * @property {string} [transfer_pair_id] - shared id between an outflow on one account and the matching inflow on another, when the user has confirmed they're the same money. Set on BOTH sides of the pair. Order-invariant `<smaller_id>|<larger_id>` (see `pairIdFor` in transferPairing.js).
  * @property {import('firebase/firestore').Timestamp} [pair_dismissed_at] - timestamp set when the user dismissed a transfer-pair suggestion. Suppresses future re-suggestion. Set on BOTH sides of the dismissed candidate.
+ * @property {string} [dedup_key] - 16-hex-char composite key derived from `account_id + ISO date + amount_pennies + raw description`, computed at parse time by `computeDedupKey()` in csvParser.js. Audit Gap 1: re-imports query for matching keys and skip duplicates. Only set on rows imported from CSV (manual additions don't carry it).
  * @property {string} [import_batch_id]
  * @property {string} [imported_from] - "nationwide" | "revolut" | "virgin_money" | "manual"
  * @property {string} [notes]
