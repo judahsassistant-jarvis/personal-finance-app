@@ -82,6 +82,55 @@ describe('suggestDebtForTransaction', () => {
     expect(suggestDebtForTransaction({ merchant: 'X', amount_pennies: -100 }, [])).toBeNull();
     expect(suggestDebtForTransaction({ merchant: 'X', amount_pennies: -100 }, null)).toBeNull();
   });
+
+  describe('specificity guard (PayPal-prefix false-positive fix)', () => {
+    const debtsWithPaypal = [
+      ...debts,
+      { id: 'paypal-credit', name: 'PayPal Credit' },
+    ];
+
+    it('rejects "PayPal: Steam" as a PayPal Credit suggestion', () => {
+      // The new csvParser format prefixes PayPal-mediated rows. Without the
+      // specificity guard, "paypal" alone (6 chars) was scoring 6 against the
+      // PayPal Credit debt and triggering a spurious tag suggestion on every
+      // Steam / Dropbox / Microsoft / Shopify purchase that PayPal funded.
+      expect(suggestDebtForTransaction(
+        { merchant: 'PayPal: Steam', amount_pennies: -1623 }, debtsWithPaypal
+      )).toBeNull();
+    });
+
+    it('rejects "PayPal: Dropbox" / "PayPal: YouTube" / "PayPal: Microsoft"', () => {
+      for (const m of ['PayPal: Dropbox', 'PayPal: YouTube', 'PayPal: Microsoft', 'PayPal: Shopify']) {
+        expect(suggestDebtForTransaction(
+          { merchant: m, amount_pennies: -999 }, debtsWithPaypal
+        )).toBeNull();
+      }
+    });
+
+    it('still accepts the actual "PayPal Credit" repayment row', () => {
+      expect(suggestDebtForTransaction(
+        { merchant: 'PayPal Credit', amount_pennies: -8254 }, debtsWithPaypal
+      ).debtId).toBe('paypal-credit');
+    });
+
+    it('treats reference-number tokens (digits) as non-disqualifying', () => {
+      // "REF123" must not block the BARCLAYCARD match — it's a transaction
+      // reference, not an alternative merchant name.
+      expect(suggestDebtForTransaction(
+        { merchant: 'BARCLAYCARD BP REF123', amount_pennies: -15000 }, debtsWithPaypal
+      ).debtId).toBe('barclay');
+    });
+
+    it('treats common bank labels (card, payment, credit) as non-disqualifying', () => {
+      // "HALIFAX CREDIT CARD" should still match the Halifax Clarity debt —
+      // 'credit' and 'card' are generic transaction labels, not alternative
+      // merchant names. The earlier test of this case still passes; this test
+      // re-asserts it specifically against the new specificity guard.
+      expect(suggestDebtForTransaction(
+        { merchant: 'HALIFAX CREDIT CARD', amount_pennies: -5000 }, debtsWithPaypal
+      ).debtId).toBe('halifax');
+    });
+  });
 });
 
 describe('suggestTagsForUntagged', () => {

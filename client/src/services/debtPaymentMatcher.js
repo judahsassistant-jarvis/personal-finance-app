@@ -20,6 +20,22 @@
 
 const MIN_WORD_LEN = 4;
 
+// Words that commonly appear in bank-statement merchant strings as labels
+// rather than as the actual merchant — e.g. "HALIFAX CREDIT CARD" where the
+// user's debt is "Halifax Clarity". These don't disqualify a brand-only match
+// when present in the merchant but absent from the debt name.
+//
+// 'credit' is included deliberately: it's the natural distinguishing word for
+// "PayPal Credit" debts but it also legitimately appears as a transaction
+// label on Halifax/Amex/etc. card-payment rows. The specificity guard relies
+// on the OTHER merchant words (Steam, Dropbox, etc.) to reject false matches
+// from the new PayPal-prefixed format.
+const GENERIC_MERCHANT_WORDS = new Set([
+  'payment', 'payments', 'debit', 'credit', 'account', 'accounts',
+  'online', 'services', 'service', 'group', 'holdings',
+  'transfer', 'direct', 'card', 'cards', 'limited',
+]);
+
 export function suggestDebtForTransaction(transaction, debts) {
   if (!transaction || !Array.isArray(debts) || debts.length === 0) return null;
   const amount = Number(transaction.amount_pennies || 0);
@@ -32,6 +48,11 @@ export function suggestDebtForTransaction(transaction, debts) {
   let bestScore = 0;
   for (const debt of debts) {
     const debtWords = normaliseWords(debt?.name);
+    // Specificity guard: if the merchant carries a "specific" word (≥4 chars,
+    // all letters, not generic) that's NOT in the debt name, the merchant is
+    // probably not this debt. Without this, "PayPal: Steam" matches a
+    // "PayPal Credit" debt purely on the shared 'paypal' prefix.
+    if (hasUnmatchedSpecificWord(merchantWords, debtWords)) continue;
     let score = 0;
     for (const w of debtWords) {
       if (w.length < MIN_WORD_LEN) continue;
@@ -44,6 +65,19 @@ export function suggestDebtForTransaction(transaction, debts) {
   }
   if (!best) return null;
   return { debtId: best.id, confidence: bestScore };
+}
+
+function hasUnmatchedSpecificWord(merchantWords, debtWords) {
+  for (const w of merchantWords) {
+    if (w.length < MIN_WORD_LEN) continue;
+    if (debtWords.has(w)) continue;
+    if (GENERIC_MERCHANT_WORDS.has(w)) continue;
+    // ID-like tokens (contain a digit) are reference numbers, not real
+    // merchant names — never disqualifying.
+    if (!/^[a-z]+$/.test(w)) continue;
+    return true;
+  }
+  return false;
 }
 
 /**
