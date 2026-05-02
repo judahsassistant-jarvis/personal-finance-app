@@ -123,7 +123,7 @@ export default function Accounts() {
           <CardHeader>
             <CardTitle>No accounts yet</CardTitle>
             <CardDescription>
-              Hit <b>Add account</b> above to start, or seed your emulator with <code>npm run seed</code>.
+              Hit <b>Add account</b> above to start.
             </CardDescription>
           </CardHeader>
         </Card>

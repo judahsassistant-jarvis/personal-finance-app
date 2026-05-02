@@ -18,3 +18,4 @@ functions/node_modules/
 
 # Emulator persistence — local dogfood state, keep out of version control
 dev-data/
+dev-data.backup-*/

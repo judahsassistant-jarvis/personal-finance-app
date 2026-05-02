@@ -31,6 +31,11 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-muted/30">
+      {import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true' && (
+        <div className="bg-amber-500 text-amber-950 text-center text-xs py-1.5 font-semibold tracking-wide">
+          EMULATOR MODE — data is local only and will not appear in production
+        </div>
+      )}
       <header className="bg-background border-b border-border">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-14">
